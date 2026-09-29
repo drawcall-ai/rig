@@ -41,6 +41,10 @@ export function resolveSkeleton(skeleton: Skeleton): ResolvedBone[] {
   const indexOf = new Map<string, number>()
   for (const [i, bone] of bones.entries()) {
     if (typeof bone.name !== 'string' || bone.name === '') throw new Error(`bones[${i}].name must be a non-empty string`)
+    // three.js (and other animation systems) reserve these in property paths and rename such nodes
+    if (/[\s.:/\[\]]/.test(bone.name)) {
+      throw new Error(`bone name "${bone.name}" contains whitespace or one of . : / [ ]; use e.g. "arm_L"`)
+    }
     if (indexOf.has(bone.name)) throw new Error(`duplicate bone name "${bone.name}"`)
     indexOf.set(bone.name, i)
     assertVec3(bone.position, `bone "${bone.name}".position`)

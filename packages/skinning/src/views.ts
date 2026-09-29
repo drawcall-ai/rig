@@ -67,13 +67,33 @@ function projection(volume: VoxelVolume, name: string, depth: Axis): Plane {
   }
 }
 
-function drawSlice(volume: VoxelVolume, slice: Slice): string[] {
+export interface SliceRegion {
+  /** Solid cells in the region (area = cells * cellSize^2). */
+  cells: number
+  /** World-space center and extent on the slice's two in-plane axes, e.g. { x: .., z: .. } for a y slice. */
+  center: Partial<Record<Axis, number>>
+  min: Partial<Record<Axis, number>>
+  max: Partial<Record<Axis, number>>
+}
+
+export interface SliceResult {
+  axis: Axis
+  /** World coordinate of the cell layer actually cut (the one containing the requested value). */
+  value: number
+  /** Separate solid regions, largest first. */
+  regions: SliceRegion[]
+}
+
+/** Connected solid regions (8-connected) of one cell layer of the volume; null outside the volume. */
+export function sliceRegions(volume: VoxelVolume, slice: Slice): SliceResult | null {
+  return sliceGrid(volume, slice)?.result ?? null
+}
+
+function sliceGrid(volume: VoxelVolume, slice: Slice) {
   const a = AXES.indexOf(slice.axis)
   const [h, v] = SCREEN[slice.axis]
   const index = Math.floor((slice.value - volume.min[a]) / volume.cellSize)
-  if (index < 0 || index >= volume.dimensions[a]) {
-    return [`slice ${slice.axis}=${slice.value}: outside the volume ${fmtRange(volume, a)}`, '']
-  }
+  if (index < 0 || index >= volume.dimensions[a]) return null
   const hi = AXES.indexOf(h)
   const vi = AXES.indexOf(v)
   const width = volume.dimensions[hi]
@@ -86,13 +106,12 @@ function drawSlice(volume: VoxelVolume, slice: Slice): string[] {
     return volume.isInsideFlat[cell[0] * volume.dimensions[1] * volume.dimensions[2] + cell[1] * volume.dimensions[2] + cell[2]] === 1
   }
 
-  // 8-connected regions, largest first
-  const region = new Int32Array(width * height).fill(-1)
-  const regions: { cells: number[] }[] = []
+  const found = new Int32Array(width * height).fill(-1)
+  const lists: number[][] = []
   for (let start = 0; start < width * height; start++) {
-    if (region[start] >= 0 || !isInside(start % width, Math.floor(start / width))) continue
+    if (found[start] >= 0 || !isInside(start % width, Math.floor(start / width))) continue
     const cells = [start]
-    region[start] = regions.length
+    found[start] = lists.length
     for (let i = 0; i < cells.length; i++) {
       const cx = cells[i] % width
       const cy = Math.floor(cells[i] / width)
@@ -102,28 +121,26 @@ function drawSlice(volume: VoxelVolume, slice: Slice): string[] {
           const ny = cy + dy
           if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
           const n = ny * width + nx
-          if (region[n] >= 0 || !isInside(nx, ny)) continue
-          region[n] = regions.length
+          if (found[n] >= 0 || !isInside(nx, ny)) continue
+          found[n] = lists.length
           cells.push(n)
         }
       }
     }
-    regions.push({ cells })
+    lists.push(cells)
   }
-  const order = regions.map((_, i) => i).sort((p, q) => regions[q].cells.length - regions[p].cells.length)
-  const labelOf = new Map(order.map((r, rank): [number, string] => [r, REGION_LABELS[rank] ?? '#']))
+  // Rank regions largest first; `rank` maps each cell to its region's rank
+  const order = lists.map((_, i) => i).sort((p, q) => lists[q].length - lists[p].length)
+  const rankOf = new Int32Array(lists.length)
+  order.forEach((r, rank) => (rankOf[r] = rank))
+  const rank = found.map((r) => (r >= 0 ? rankOf[r] : -1))
 
-  const planeValue = fmt(volume.min[a] + (index + 0.5) * volume.cellSize, volume.cellSize)
-  const snapped = planeValue === fmt(slice.value, volume.cellSize) ? '' : ` (the cell layer containing ${slice.axis}=${slice.value})`
-  const lines = [`slice ${slice.axis}=${planeValue}${snapped}: ${regions.length} regions (${h} to the right, ${v} up)`]
+  const world = (axis: number, cellIndex: number): number => volume.min[axis] + (cellIndex + 0.5) * volume.cellSize
   const crop: [number, number, number, number] = [Infinity, -Infinity, Infinity, -Infinity]
-  const world = (axis: number, cellIndex: number): string =>
-    fmt(volume.min[axis] + (cellIndex + 0.5) * volume.cellSize, volume.cellSize)
-  for (const r of order.slice(0, REGION_LABELS.length)) {
-    const cells = regions[r].cells
+  const regions = order.map((r): SliceRegion => {
     let sumH = 0, sumV = 0
     let minH = Infinity, maxH = -Infinity, minV = Infinity, maxV = -Infinity
-    for (const c of cells) {
+    for (const c of lists[r]) {
       const x = c % width
       const y = Math.floor(c / width)
       sumH += x
@@ -133,13 +150,35 @@ function drawSlice(volume: VoxelVolume, slice: Slice): string[] {
     }
     crop[0] = Math.min(crop[0], minH); crop[1] = Math.max(crop[1], maxH)
     crop[2] = Math.min(crop[2], minV); crop[3] = Math.max(crop[3], maxV)
+    const n = lists[r].length
+    return {
+      cells: n,
+      center: { [h]: world(hi, sumH / n), [v]: world(vi, sumV / n) },
+      min: { [h]: world(hi, minH), [v]: world(vi, minV) },
+      max: { [h]: world(hi, maxH), [v]: world(vi, maxV) },
+    }
+  })
+  const result: SliceResult = { axis: slice.axis, value: world(a, index), regions }
+  return { result, h, v, width, height, rank, crop }
+}
+
+function drawSlice(volume: VoxelVolume, slice: Slice): string[] {
+  const grid = sliceGrid(volume, slice)
+  if (!grid) return [`slice ${slice.axis}=${slice.value}: outside the volume ${fmtRange(volume, AXES.indexOf(slice.axis))}`, '']
+  const { result, h, v, width, height, rank, crop } = grid
+  const f = (n: number | undefined): string => fmt(n ?? NaN, volume.cellSize)
+  const label = (r: number): string => REGION_LABELS[r] ?? '#'
+
+  const planeValue = f(result.value)
+  const snapped = planeValue === f(slice.value) ? '' : ` (the cell layer containing ${slice.axis}=${slice.value})`
+  const lines = [`slice ${slice.axis}=${planeValue}${snapped}: ${result.regions.length} regions (${h} to the right, ${v} up)`]
+  result.regions.slice(0, REGION_LABELS.length).forEach((region, r) => {
     lines.push(
-      `  ${labelOf.get(r)}: ${cells.length} cells, center ${h}=${world(hi, sumH / cells.length)} ` +
-        `${v}=${world(vi, sumV / cells.length)}, ${h} ${world(hi, minH)}..${world(hi, maxH)}, ` +
-        `${v} ${world(vi, minV)}..${world(vi, maxV)}`,
+      `  ${label(r)}: ${region.cells} cells, center ${h}=${f(region.center[h])} ${v}=${f(region.center[v])}, ` +
+        `${h} ${f(region.min[h])}..${f(region.max[h])}, ${v} ${f(region.min[v])}..${f(region.max[v])}`,
     )
-  }
-  if (regions.length === 0) return [...lines, '']
+  })
+  if (result.regions.length === 0) return [...lines, '']
 
   // Draw only the solid part of the slice, with a one-cell margin
   lines.push(
@@ -147,7 +186,7 @@ function drawSlice(volume: VoxelVolume, slice: Slice): string[] {
       title: '',
       h,
       v,
-      cell: (x, y) => (region[y * width + x] >= 0 ? (labelOf.get(region[y * width + x]) ?? '#') : '.'),
+      cell: (x, y) => (rank[y * width + x] >= 0 ? label(rank[y * width + x]) : '.'),
       crop: [Math.max(0, crop[0] - 1), Math.min(width - 1, crop[1] + 1), Math.max(0, crop[2] - 1), Math.min(height - 1, crop[3] + 1)],
     }).slice(1),
   )

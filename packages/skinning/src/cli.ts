@@ -60,7 +60,7 @@ Skeleton JSON:
   }
   name       unique; becomes the joint node name
   position   joint pivot [x, y, z]; place it inside the mesh, centered in the limb
-  parent     parent bone name; omit for the root. Any order.
+  parent     parent bone name; omit for the root. Any order. Names: letters, digits, _ or -.
   tail       end of the bone. Default: its first child's position; for a leaf, the
              joint extended by half its parent bone, which often overshoots the
              mesh, so give leaves (head, hooves, tail tips, fingers) a tail.

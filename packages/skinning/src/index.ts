@@ -10,7 +10,7 @@ import { computeVoxelVolume, type VoxelVolume, type VoxelVolumeOptions } from '.
 
 export { skin, type BoneReport, type SkinOptions, type SkinReport } from './skin.js'
 export type { Skeleton, SkeletonBone } from './skeleton.js'
-export { formatVolume, type Axis, type Slice } from './views.js'
+export { formatVolume, sliceRegions, type Axis, type Slice, type SliceRegion, type SliceResult } from './views.js'
 export { computeVoxelVolume, type VoxelVolume, type VoxelVolumeOptions } from './voxelize.js'
 export { solveSkinWeights, type BoneLine, type SolveInput, type SolveResult, type Vec3 } from './solve.js'
 

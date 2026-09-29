@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>render</title>
+    <style>
+      body { margin: 0; background: #2a2d31; }
+      #view { position: relative; overflow: hidden; }
+      #overlay { position: absolute; inset: 0; pointer-events: none; font: 12px ui-monospace, monospace; }
+      #overlay span { position: absolute; white-space: nowrap; }
+      .axis { color: #9aa4b1; }
+      .bone { color: #ffd23f; text-shadow: 0 0 3px #000, 0 0 3px #000; transform: translate(6px, -50%); }
+    </style>
+  </head>
+  <body>
+    <div id="view"><div id="overlay"></div></div>
+    <script type="module" src="./page.ts"></script>
+  </body>
+</html>
