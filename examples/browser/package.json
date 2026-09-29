@@ -1,5 +1,5 @@
 {
-  "name": "skinning-browser-example",
+  "name": "rig-browser-example",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,9 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@drawcall/skinning": "workspace:*",
-    "@gltf-transform/core": "^4.5.1",
-    "@gltf-transform/extensions": "^4.5.1",
+    "@drawcall/rig": "workspace:*",
     "three": "^0.186.1"
   },
   "devDependencies": {

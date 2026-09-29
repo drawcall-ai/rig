@@ -48,6 +48,6 @@ jobs:
       - name: Set Version
         run: pnpm -F './packages/**/*' exec json -f "package.json" -I -e 'this.version = "${{ steps.gitversion.outputs.fullSemVer }}"'
 
-      - name: Publish @drawcall/skinning
-        working-directory: ./packages/skinning
+      - name: Publish @drawcall/rig
+        working-directory: ./packages/rig
         run: pnpm publish --access public --no-git-checks --tag latest

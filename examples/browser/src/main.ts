@@ -15,9 +15,7 @@
  *   animation=<url>  play this keyframe JSON (see keyframes.ts) instead of the gallop
  */
 
-import { WebIO } from '@gltf-transform/core'
-import { ALL_EXTENSIONS } from '@gltf-transform/extensions'
-import { skin, type Skeleton } from '@drawcall/skinning'
+import { skin } from '@drawcall/rig/three'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
@@ -26,7 +24,6 @@ import { keyframeClip, type KeyframeAnimation } from './keyframes.js'
 import horseUrl from '../../node/horse.glb?url'
 import horseSkeleton from '../../node/horse.skeleton.json'
 
-const io = new WebIO().registerExtensions(ALL_EXTENSIONS)
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 const skeletonInput = element<HTMLTextAreaElement>('skeleton')
 const bendInput = element<HTMLInputElement>('bend')
@@ -65,7 +62,11 @@ const animation = animationUrl ? ((await fetchJson(animationUrl)) as KeyframeAni
 skeletonInput.value = JSON.stringify(skeletonUrl ? await fetchJson(skeletonUrl) : horseSkeleton, null, 2)
 
 async function show(glb: Uint8Array): Promise<void> {
-  const gltf = await new GLTFLoader().parseAsync(glb.slice().buffer, '')
+  showScene((await new GLTFLoader().parseAsync(glb.slice().buffer, '')).scene)
+}
+
+function showScene(loaded: THREE.Group): void {
+  const gltf = { scene: loaded }
   scene.remove(model)
   model = new THREE.Group().add(gltf.scene)
   model.add(new THREE.SkeletonHelper(gltf.scene))
@@ -118,15 +119,37 @@ function xray(): void {
 }
 
 async function skinModel(): Promise<void> {
-  const document = await io.readBinary(modelBytes)
+  const gltf = await new GLTFLoader().parseAsync(modelBytes.slice().buffer, '')
   const start = performance.now()
-  const report = skin(document, JSON.parse(skeletonInput.value) as Skeleton)
+  const report = skin(gltf.scene, buildBones(JSON.parse(skeletonInput.value).bones))
   const ms = performance.now() - start
   reportOutput.textContent =
     `${report.vertices} vertices skinned in ${ms.toFixed(0)} ms\n\n` +
     report.bones.map((bone) => `${bone.name}: ${bone.vertices} vertices`).join('\n') +
     (report.warnings.length ? `\n\n${report.warnings.map((w) => `warning: ${w}`).join('\n')}` : '')
-  await show(await io.writeBinary(document))
+  showScene(gltf.scene)
+}
+
+interface JointSpec {
+  name: string
+  parent?: string
+  position: [number, number, number]
+  tail?: [number, number, number]
+  deform?: boolean
+}
+
+/** Bones from world-space joint positions (identity rotations); returns the root. */
+function buildBones(specs: JointSpec[]): THREE.Bone {
+  const bones = new Map(specs.map((spec) => [spec.name, Object.assign(new THREE.Bone(), { name: spec.name })]))
+  for (const spec of specs) {
+    const bone = bones.get(spec.name) as THREE.Bone
+    const parent = spec.parent ? specs.find((s) => s.name === spec.parent) : undefined
+    bone.position.set(...spec.position)
+    if (parent) bone.position.sub(new THREE.Vector3(...parent.position))
+    if (spec.parent) bones.get(spec.parent)?.add(bone)
+    Object.assign(bone.userData, { tail: spec.tail, deform: spec.deform })
+  }
+  return bones.get(specs.find((spec) => !spec.parent)?.name ?? '') as THREE.Bone
 }
 
 element<HTMLInputElement>('file').addEventListener('change', async (event) => {

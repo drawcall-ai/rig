@@ -3,4 +3,5 @@ dist
 .DS_Store
 *.skinned.glb
 *.skinned.gltf
+*.check.png
 examples/browser/public

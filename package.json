@@ -2,9 +2,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter @drawcall/skinning build",
+    "build": "pnpm --filter @drawcall/rig build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter @drawcall/skinning test"
+    "test": "pnpm --filter @drawcall/rig test"
   },
   "devDependencies": {
     "@types/node": "^22.19.3",
