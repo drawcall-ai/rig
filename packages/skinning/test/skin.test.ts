@@ -66,6 +66,13 @@ function checkWeights(document: Document): void {
       { name: 'rightHigh', parent: 'rightLow', position: [2, 2, 0], tail: [2, 3.7, 0] },
     ],
   }
+  // Pieces: the scene is two separate capsules, so a bone can own one of them outright
+  const copy = async () => io.readBinary(await io.writeBinary(document))
+  const pinned = skin(await copy(), { bones: [...skeleton.bones, { name: 'prop', parent: 'root', position: [2, 2, 0], pieces: [1] }] }, { resolution: 64 })
+  assert.equal(pinned.bones.find((bone) => bone.name === 'prop')?.vertices, capsule.positions.length / 3, 'prop owns one whole capsule')
+  const another = await copy()
+  assert.throws(() => skin(another, { bones: [...skeleton.bones, { name: 'prop', position: [0, 0, 0], pieces: [5] }] }), /names piece 5/)
+
   const report = skin(document, skeleton, { resolution: 64 })
   assert.deepEqual(report.warnings, [])
   assert.equal(report.meshes, 2)
@@ -121,6 +128,10 @@ function checkWeights(document: Document): void {
     skeleton.bones.map((bone) => bone.name),
   )
   assert.ok(result.getRoot().listTextures().length > 0, 'textures survive')
+  // The replaced armature is gone and every new joint name is unique, so engines find bones by name
+  const nodeNames = result.getRoot().listNodes().map((node) => node.getName())
+  for (const bone of skeleton.bones) assert.equal(nodeNames.filter((n) => n === bone.name).length, 1, `one node named ${bone.name}`)
+  assert.ok(!nodeNames.some((n) => n.startsWith('b_')), `old Fox joints remain: ${nodeNames.filter((n) => n.startsWith('b_'))}`)
   // The original bind pose is kept as the new rest pose
   const worldAfter = readScene(result).positions
   let maxDiff = 0

@@ -11,7 +11,7 @@ import { ALL_EXTENSIONS } from '@gltf-transform/extensions'
 import draco3d from 'draco3dgltf'
 import { MeshoptDecoder } from 'meshoptimizer'
 import { computeVoxelVolume, formatVolume, skin, type Axis, type Skeleton, type SkinReport, type Slice } from './index.js'
-import { readScene } from './scene.js'
+import { meshParts, readScene } from './scene.js'
 
 const HELP = `skinning: automatic skin weights for any glTF/GLB (CPU only)
 
@@ -65,6 +65,8 @@ Skeleton JSON:
              joint extended by half its parent bone, which often overshoots the
              mesh, so give leaves (head, hooves, tail tips, fingers) a tail.
   deform     false = joint exists but attracts no weights (e.g. a root on the floor)
+  pieces     [0, 3] = bind these separate mesh pieces 100% to this bone (glasses,
+             armor, props); indices from the "pieces" list that voxel prints
   Each deforming bone pulls in the volume around its segment position->tail. Max 256
   bones. Joints get identity rotations: the bind pose is the model's pose as given.
   Naming sides: a model facing +z has its own left side at +x.
@@ -111,8 +113,14 @@ async function main(argv: string[]): Promise<void> {
       process.stdout.write(JSON.stringify(json) + '\n')
     } else {
       const meshNodes = new Set(scene.parts.map((part) => part.node)).size
+      const pieces = meshParts(scene.positions, scene.indices)
+      const round = (v: number[]) => `[${v.map((n) => n.toPrecision(3)).join(', ')}]`
+      const pieceLines = pieces
+        .slice(0, 40)
+        .map((p, i) => `  piece ${i}: ${p.vertices.length} vertices, ${round(p.min)} .. ${round(p.max)}`)
       process.stdout.write(
-        `mesh: ${scene.positions.length / 3} vertices, ${scene.indices.length / 3} triangles in ${meshNodes} mesh node(s)\n` +
+        `mesh: ${scene.positions.length / 3} vertices, ${scene.indices.length / 3} triangles in ${meshNodes} mesh node(s), ` +
+          `${pieces.length} separate piece(s)${pieces.length > 1 ? ' (largest first):\n' + pieceLines.join('\n') : ''}\n` +
           formatVolume(volume, (values.slice ?? []).flatMap(parseSlices)) +
           '\n',
       )

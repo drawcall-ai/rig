@@ -18,10 +18,11 @@ import {
   type Mesh,
   type Node,
   type Primitive,
+  type Root,
   type Skin,
 } from '@gltf-transform/core'
 import { boneLines, resolveSkeleton, type ResolvedBone, type Skeleton } from './skeleton.js'
-import { determinant3, readScene, transformNormal, transformPoint, transformVector, type ScenePart } from './scene.js'
+import { determinant3, meshParts, readScene, transformNormal, transformPoint, transformVector, type ScenePart } from './scene.js'
 import { solveSkinWeights, type BoneLine, type Vec3 } from './solve.js'
 import { computeVoxelVolume, type VoxelVolume } from './voxelize.js'
 
@@ -57,6 +58,8 @@ export interface SkinReport {
   bones: BoneReport[]
   /** Vertices no bone reached through the volume; bound rigidly to the nearest bone line. */
   unreachedVertices: number
+  /** Weight that crossed a gap onto a part another bone owns: {from bone, onto the bone the vertices belong to, count}. */
+  bleed: { from: string; onto: string; vertices: number }[]
   warnings: string[]
 }
 
@@ -71,6 +74,7 @@ export function skin(document: Document, skeleton: Skeleton, options: SkinOption
   const volume = computeVoxelVolume(scene.positions, scene.indices, { resolution })
   const solved = solveSkinWeights({ positions: scene.positions, volume, boneLines: lines, blurIterations, orientationWeight })
   const unreachedVertices = bindUnreached(scene.positions, solved.skinIndices, solved.skinWeights, lines)
+  bindPieces(bones, scene.positions, scene.indices, solved.skinIndices, solved.skinWeights)
 
   writeSkin(document, bones, scene.parts, solved.skinIndices, solved.skinWeights)
 
@@ -80,6 +84,7 @@ export function skin(document: Document, skeleton: Skeleton, options: SkinOption
     grid: { dimensions: volume.dimensions, cellSize: volume.cellSize, insideVoxels: volume.insideIndices.length },
     bones: boneReports(bones, volume, scene.positions, solved.skinIndices, solved.skinWeights),
     unreachedVertices,
+    bleed: findBleed(bones, lines, scene.positions, solved.skinIndices, solved.skinWeights),
     warnings: [],
   }
   for (const [i, bone] of report.bones.entries()) {
@@ -101,6 +106,13 @@ export function skin(document: Document, skeleton: Skeleton, options: SkinOption
           `to give it vertices, move its joints so a ring of vertices falls between them`,
       )
     }
+  }
+  for (const { from, onto, vertices } of report.bleed) {
+    report.warnings.push(
+      `bone "${from}" holds >=10% weight on ${vertices} vertices that belong to "${onto}" (much nearer to it): ` +
+        `weight crossed a gap between touching parts. Move the joints apart, raise the resolution (e.g. 256), ` +
+        `or bind separate pieces with "pieces"; check with a weight heatmap of "${from}"`,
+    )
   }
   if (unreachedVertices > 0) {
     report.warnings.push(
@@ -128,6 +140,76 @@ function bindUnreached(positions: Float32Array, indices: Uint16Array, weights: F
     count++
   }
   return count
+}
+
+/** Bones with `pieces` get those separate mesh pieces 100%. */
+function bindPieces(
+  bones: ResolvedBone[],
+  positions: Float32Array,
+  indices: Uint32Array,
+  skinIndices: Uint16Array,
+  skinWeights: Float32Array,
+): void {
+  if (!bones.some((bone) => bone.pieces?.length)) return
+  const parts = meshParts(positions, indices)
+  bones.forEach((bone, b) => {
+    for (const piece of bone.pieces ?? []) {
+      const part = parts[piece]
+      if (!part) throw new Error(`bone "${bone.name}" names piece ${piece}, but the model has ${parts.length} pieces (0..${parts.length - 1})`)
+      for (const v of part.vertices) {
+        skinIndices.fill(0, v * 4, v * 4 + 4)
+        skinWeights.fill(0, v * 4, v * 4 + 4)
+        skinIndices[v * 4] = b
+        skinWeights[v * 4] = 1
+      }
+    }
+  })
+}
+
+/**
+ * Weight that crossed a gap: a bone holding >= 10% on vertices that lie clearly
+ * nearer a bone on another branch of the skeleton (a thigh on the
+ * other leg, an arm on the chest it touches). Reported per bone pair.
+ */
+function findBleed(
+  bones: ResolvedBone[],
+  lines: BoneLine[],
+  positions: Float32Array,
+  skinIndices: Uint16Array,
+  skinWeights: Float32Array,
+): { from: string; onto: string; vertices: number }[] {
+  // Overlap along one chain (shin onto its own foot) is normal blending; only separate branches count
+  const ancestor = (a: number, b: number) => {
+    for (let i = bones[b].parentIndex; i >= 0; i = bones[i].parentIndex) if (i === a) return true
+    return false
+  }
+  const related = (a: number, b: number) => a === b || ancestor(a, b) || ancestor(b, a)
+  const counts = new Map<string, number>()
+  for (let v = 0; v < positions.length / 3; v++) {
+    const distance = new Map<number, number>()
+    for (const line of lines) {
+      const d = segmentDistanceSq(positions, v * 3, line.start, line.end)
+      distance.set(line.boneIndex, Math.min(distance.get(line.boneIndex) ?? Infinity, d))
+    }
+    let nearest = -1
+    for (const [bone, d] of distance) if (nearest < 0 || d < (distance.get(nearest) as number)) nearest = bone
+    for (let k = 0; k < 4; k++) {
+      const bone = skinIndices[v * 4 + k]
+      if (skinWeights[v * 4 + k] < 0.1 || related(bone, nearest)) continue
+      // Clearly nearer: at least twice as far (4x squared) from the weighted bone as from the nearest one
+      if ((distance.get(bone) ?? Infinity) < 4 * (distance.get(nearest) as number)) continue
+      const key = `${bone}>${nearest}`
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+  }
+  const minimum = Math.max(25, 0.005 * (positions.length / 3))
+  return [...counts]
+    .filter(([, n]) => n >= minimum)
+    .map(([key, n]) => {
+      const [from, onto] = key.split('>').map(Number)
+      return { from: bones[from].name, onto: bones[onto].name, vertices: n }
+    })
+    .sort((p, q) => q.vertices - p.vertices)
 }
 
 function segmentDistanceSq(p: Float32Array, o: number, a: Vec3, b: Vec3): number {
@@ -167,7 +249,8 @@ function writeSkin(
   for (const joint of joints) skin.addJoint(joint)
 
   const oldMeshes = new Set<Mesh>()
-  const oldSkins = new Set<Skin>()
+  const oldSkins = new Set<Skin>(root.listSkins().filter((other) => other !== skin))
+  const oldJoints = new Set<Node>([...oldSkins].flatMap((other) => other.listJoints()))
   const skinnedNodes = new Map<Node, Node>()
   for (const part of parts) {
     let skinned = skinnedNodes.get(part.node)
@@ -182,8 +265,6 @@ function writeSkin(
       scene.addChild(skinned)
       skinnedNodes.set(part.node, skinned)
       oldMeshes.add(mesh)
-      const oldSkin = part.node.getSkin()
-      if (oldSkin) oldSkins.add(oldSkin)
     }
     ;(skinned.getMesh() as Mesh).addPrimitive(bakePrimitive(document, buffer, part, skinIndices, skinWeights))
   }
@@ -203,6 +284,33 @@ function writeSkin(
     const ibm = oldSkin.getInverseBindMatrices()
     oldSkin.dispose()
     if (ibm) disposeIfUnused(ibm)
+  }
+  removeOldRig(root, oldJoints, new Set(joints))
+}
+
+/**
+ * The replaced skins' joints are a dead armature now: remove the ones without
+ * meshes below them, with their animation channels, and rename any other node
+ * whose name collides with a new joint so the new names stay exact (engines
+ * look bones up by name).
+ */
+function removeOldRig(root: Root, oldJoints: Set<Node>, newJoints: Set<Node>): void {
+  const holdsMesh = (node: Node): boolean => !!node.getMesh() || node.listChildren().some(holdsMesh)
+  const removed = new Set([...oldJoints].filter((joint) => !holdsMesh(joint)))
+  for (const animation of root.listAnimations()) {
+    for (const channel of animation.listChannels()) {
+      const target = channel.getTargetNode()
+      if (!target || !removed.has(target)) continue
+      const sampler = channel.getSampler()
+      channel.dispose()
+      if (sampler && !sampler.listParents().some((p) => p.propertyType === PropertyType.ANIMATION_CHANNEL)) sampler.dispose()
+    }
+    if (animation.listChannels().length === 0) animation.dispose()
+  }
+  for (const node of removed) node.dispose()
+  const names = new Set([...newJoints].map((joint) => joint.getName()))
+  for (const node of root.listNodes()) {
+    if (!newJoints.has(node) && names.has(node.getName())) node.setName(`${node.getName()}_source`)
   }
 }
 

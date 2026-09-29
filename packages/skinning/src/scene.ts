@@ -166,3 +166,59 @@ export function determinant3(m: Mat4, mo: number): number {
   const g = m[mo + 8], h = m[mo + 9], i = m[mo + 10]
   return a * (e * i - f * h) - d * (b * i - c * h) + g * (b * f - c * e)
 }
+
+/**
+ * Separate mesh pieces: vertices connected through triangles, with coincident
+ * vertices merged so UV and normal seams don't split a piece. Returns one
+ * piece id per vertex (ids are arbitrary vertex indices).
+ */
+export function meshShells(positions: Float32Array, indices: Uint32Array): Int32Array {
+  const count = positions.length / 3
+  const parent = new Int32Array(count).map((_, i) => i)
+  const find = (i: number): number => {
+    while (parent[i] !== i) i = parent[i] = parent[parent[i]]
+    return i
+  }
+  const union = (a: number, b: number): void => {
+    parent[find(a)] = find(b)
+  }
+  const byPosition = new Map<string, number>()
+  for (let v = 0; v < count; v++) {
+    const key = `${positions[v * 3]},${positions[v * 3 + 1]},${positions[v * 3 + 2]}`
+    const first = byPosition.get(key)
+    if (first === undefined) byPosition.set(key, v)
+    else union(v, first)
+  }
+  for (let t = 0; t < indices.length; t += 3) {
+    union(indices[t], indices[t + 1])
+    union(indices[t], indices[t + 2])
+  }
+  return parent.map((_, v) => find(v))
+}
+
+export interface MeshPart {
+  /** Vertex indices (into SceneGeometry.positions) of this separate piece. */
+  vertices: number[]
+  min: [number, number, number]
+  max: [number, number, number]
+}
+
+/** Separate mesh pieces, largest first; indices into this list name pieces in `SkeletonBone.pieces`. */
+export function meshParts(positions: Float32Array, indices: Uint32Array): MeshPart[] {
+  const shell = meshShells(positions, indices)
+  const parts = new Map<number, MeshPart>()
+  for (let v = 0; v < shell.length; v++) {
+    let part = parts.get(shell[v])
+    if (!part) {
+      part = { vertices: [], min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] }
+      parts.set(shell[v], part)
+    }
+    part.vertices.push(v)
+    for (let a = 0; a < 3; a++) {
+      part.min[a] = Math.min(part.min[a], positions[v * 3 + a])
+      part.max[a] = Math.max(part.max[a], positions[v * 3 + a])
+    }
+  }
+  // Ties broken by position so the order is stable across runs
+  return [...parts.values()].sort((p, q) => q.vertices.length - p.vertices.length || p.min[0] - q.min[0] || p.min[1] - q.min[1] || p.min[2] - q.min[2])
+}

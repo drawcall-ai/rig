@@ -52,7 +52,7 @@ Skeleton format, in the model's world space and units:
 }
 ```
 
-Each deforming bone is the segment from `position` to `tail`. By default, `tail` is the bone's first child's position; for a leaf, it is the joint extended by half of its parent bone. `"deform": false` keeps a joint out of the weighting. The output joints have identity rotations, so the bind pose is the model as given.
+Each deforming bone is the segment from `position` to `tail`. By default, `tail` is the bone's first child's position; for a leaf, it is the joint extended by half of its parent bone. `"deform": false` keeps a joint out of the weighting, and `"pieces": [2, 5]` binds those separate mesh pieces (listed by `skinning voxel`) 100% to the bone. The output joints have identity rotations, so the bind pose is the model as given.
 
 ## Library
 

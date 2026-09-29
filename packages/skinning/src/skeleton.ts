@@ -19,6 +19,12 @@ export interface SkeletonBone {
   tail?: Vec3
   /** false = the joint exists in the output but attracts no weights (default true). */
   deform?: boolean
+  /**
+   * Rigid attachments: indices of separate mesh pieces (see meshParts / rigkit parts()) bound
+   * 100% to this bone, e.g. glasses, a helmet, armor plates, a prop. A bone with pieces drives
+   * only those pieces; it takes part in the weight solve only if it also deforms (deform: true).
+   */
+  pieces?: number[]
 }
 
 export interface Skeleton {
@@ -68,14 +74,20 @@ export function resolveSkeleton(skeleton: Skeleton): ResolvedBone[] {
   const children = bones.map((): number[] => [])
   parentIndices.forEach((parent, i) => parent >= 0 && children[parent].push(i))
 
+  for (const bone of bones) {
+    if (bone.pieces !== undefined && (!Array.isArray(bone.pieces) || !bone.pieces.every((p) => Number.isInteger(p) && p >= 0))) {
+      throw new Error(`bone "${bone.name}".pieces must be an array of part indices`)
+    }
+  }
   const resolved = bones.map((bone, i): ResolvedBone => ({
     ...bone,
     parentIndex: parentIndices[i],
     children: children[i],
     tail: bone.tail ?? defaultTail(bones, parentIndices[i], children[i], bone.position),
-    deform: bone.deform !== false,
+    // Bones that only hold pieces stay out of the solve unless asked to deform too
+    deform: bone.pieces ? bone.deform === true : bone.deform !== false,
   }))
-  if (!resolved.some((bone) => bone.deform)) throw new Error('skeleton has no deforming bone')
+  if (!resolved.some((bone) => bone.deform)) throw new Error('skeleton has no deforming bone (bones with only pieces do not count)')
   return resolved
 }
 
