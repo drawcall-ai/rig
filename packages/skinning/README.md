@@ -82,4 +82,4 @@ What `skin` does to the document:
 3. **Smooth.** The weights are blurred (sparse top-4) until they converge.
 4. **Sample.** Each vertex takes the weights of its nearest solid voxel.
 
-Because the distances run through the volume rather than straight through space, a leg never grabs the other leg.
+Because the distances run through the volume rather than straight through space, touching parts (a leg and the other leg, an arm and the torso) barely share weight, and `skin` warns when they do. Raising `--resolution` from 128 to 256 cuts the remaining leak about 20×.
