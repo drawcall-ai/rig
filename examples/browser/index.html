@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Skinning in the browser</title>
+    <style>
+      body { margin: 0; font: 13px system-ui, sans-serif; display: flex; height: 100vh; background: #1d1f21; color: #ddd; }
+      aside { width: 340px; padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
+      textarea { flex: 1; min-height: 200px; font: 11px ui-monospace, monospace; background: #111; color: #ddd; }
+      pre { white-space: pre-wrap; font: 11px ui-monospace, monospace; margin: 0; }
+      main { flex: 1; position: relative; }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <aside>
+      <label>Model <input id="file" type="file" accept=".glb" /></label>
+      <label>Skeleton JSON</label>
+      <textarea id="skeleton" spellcheck="false"></textarea>
+      <button id="skin">Skin</button>
+      <label><input id="animate" type="checkbox" checked /> Play gallop</label>
+      <label><input id="xray" type="checkbox" /> X-ray (see the skeleton through the mesh)</label>
+      <label>Bend every joint <input id="bend" type="range" min="-60" max="60" value="0" /></label>
+      <pre id="report"></pre>
+    </aside>
+    <main id="view"></main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

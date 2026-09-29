@@ -1,0 +1,21 @@
+{
+  "name": "skinning-node-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "voxel": "skinning voxel horse.glb",
+    "skin": "skinning skin horse.glb --skeleton horse.skeleton.json",
+    "api": "tsx skin.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@drawcall/skinning": "workspace:*",
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3"
+  }
+}

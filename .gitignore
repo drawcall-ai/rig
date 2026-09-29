@@ -1,0 +1,6 @@
+node_modules
+dist
+.DS_Store
+*.skinned.glb
+*.skinned.gltf
+examples/browser/public

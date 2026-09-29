@@ -1,0 +1,15 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --filter @drawcall/skinning build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @drawcall/skinning test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.3",
+    "json": "^11.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3"
+  }
+}

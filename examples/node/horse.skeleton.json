@@ -1,0 +1,39 @@
+{
+  "bones": [
+    { "name": "hips",   "position": [0, 116, -72], "tail": [0, 124, -98] },
+    { "name": "spine1", "parent": "hips",   "position": [0, 116, -68] },
+    { "name": "spine2", "parent": "spine1", "position": [0, 118, -25] },
+    { "name": "chest",  "parent": "spine2", "position": [0, 121, 18] },
+    { "name": "neck1",  "parent": "chest",  "position": [0, 136, 56] },
+    { "name": "neck2",  "parent": "neck1",  "position": [0, 156, 83] },
+    { "name": "head",   "parent": "neck2",  "position": [1, 167, 108], "tail": [2, 122, 128] },
+
+    { "name": "tail1", "parent": "hips",  "position": [0, 138, -98] },
+    { "name": "tail2", "parent": "tail1", "position": [0, 138, -124] },
+    { "name": "tail3", "parent": "tail2", "position": [0, 136, -148], "tail": [0, 129, -172] },
+
+    { "name": "hindL_thigh",  "parent": "hips",         "position": [13, 105, -85] },
+    { "name": "hindL_shin",   "parent": "hindL_thigh",  "position": [17, 80, -93] },
+    { "name": "hindL_cannon", "parent": "hindL_shin",   "position": [14, 63, -111] },
+    { "name": "hindL_hoof",   "parent": "hindL_cannon", "position": [5, 17, -121] },
+    { "name": "hindL_toe",    "parent": "hindL_hoof",   "position": [3.5, 3, -115], "deform": false },
+
+    { "name": "hindR_thigh",  "parent": "hips",         "position": [-13, 102, -88] },
+    { "name": "hindR_shin",   "parent": "hindR_thigh",  "position": [-15, 90, -110] },
+    { "name": "hindR_cannon", "parent": "hindR_shin",   "position": [-12, 74, -135] },
+    { "name": "hindR_hoof",   "parent": "hindR_cannon", "position": [-11, 42, -169] },
+    { "name": "hindR_toe",    "parent": "hindR_hoof",   "position": [-11, 42, -186], "deform": false },
+
+    { "name": "frontR_upper",   "parent": "chest",          "position": [-13, 103, 48] },
+    { "name": "frontR_forearm", "parent": "frontR_upper",   "position": [-15.5, 82, 48] },
+    { "name": "frontR_cannon",  "parent": "frontR_forearm", "position": [-14, 53, 46.5] },
+    { "name": "frontR_hoof",    "parent": "frontR_cannon",  "position": [-6, 13, 41] },
+    { "name": "frontR_toe",     "parent": "frontR_hoof",    "position": [-5, 1.5, 49], "deform": false },
+
+    { "name": "frontL_upper",   "parent": "chest",          "position": [13, 102, 54] },
+    { "name": "frontL_forearm", "parent": "frontL_upper",   "position": [13.5, 86, 69] },
+    { "name": "frontL_cannon",  "parent": "frontL_forearm", "position": [13, 74.5, 94.5] },
+    { "name": "frontL_hoof",    "parent": "frontL_cannon",  "position": [10.3, 43, 121] },
+    { "name": "frontL_toe",     "parent": "frontL_hoof",    "position": [10, 29.5, 129], "deform": false }
+  ]
+}
