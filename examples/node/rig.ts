@@ -18,7 +18,7 @@ for (const region of section(scene, 'y', [30])[0]?.regions ?? []) console.log('l
 const skeleton = JSON.parse(readFileSync('horse.skeleton.json', 'utf8')) as { bones: JointSpec[] }
 const root = buildBones(skeleton.bones)
 
-const report = skin(scene, root)
+const report = await skin(scene, root)
 for (const bone of report.bones) console.log(`${bone.name}: ${bone.vertices} vertices`)
 for (const warning of report.warnings) console.warn(`warning: ${warning}`)
 
