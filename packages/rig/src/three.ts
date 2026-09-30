@@ -1,14 +1,14 @@
 /**
  * The three.js-native core, usable in Node and the browser: measure a scene
  * (section, parts) and bind it to a THREE.Bone tree (skin). Bones are plain
- * three.js: build them with new THREE.Bone(), parent them with add(), pose
- * them with rotation, return to the bind pose with skeleton.pose().
+ * three.js: new THREE.Bone(), place it with position.set(worldX, worldY,
+ * worldZ), then parent.attach(bone) keeps that world position. Pose with
+ * bone.rotation; skeleton.pose() returns to the bind pose.
  *
- * Per-bone options live in bone.userData:
- *   tail: [x, y, z]  world-space end of the bone (default: its first child; a leaf extends its parent)
- *   deform: false    the bone is animated but attracts no weights
- *   pieces: [i, ...] bind these separate mesh pieces (indices from parts()) 100% to the bone; such a bone
- *                    drives only its pieces unless it also has deform: true
+ * A bone's segment runs from its joint to its first child. Leaf bones only
+ * mark where a chain ends (like Mixamo's HeadTop_End) and get no weights.
+ * bone.userData.pieces = [i, ...] binds those separate mesh pieces (indices
+ * from parts()) 100% to the bone, which then drives only them.
  */
 
 import * as THREE from 'three'
@@ -20,33 +20,6 @@ import { computeWeights, meshParts, type SkinOptions, type SkinReport } from './
 
 export type { Axis, SliceRegion, SliceResult } from './section.js'
 export type { BoneReport, SkinOptions, SkinReport } from './weights.js'
-
-export interface BoneOptions {
-  /** World-space end of the bone (default: its first child; a leaf extends its parent). */
-  tail?: Vec3
-  /** false: animated, but attracts no weights. With pieces: true to also take automatic weights. */
-  deform?: boolean
-  /** Separate mesh pieces (indices from parts()) bound 100% to this bone. */
-  pieces?: number[]
-}
-
-/**
- * A THREE.Bone named `name` whose joint sits at `world` (world space), added under `parent`
- * (positions are converted to the parent's space). The options go to bone.userData.
- */
-export function bone(name: string, world: Vec3, parent?: THREE.Bone, options: BoneOptions = {}): THREE.Bone {
-  const b = new THREE.Bone()
-  b.name = name
-  b.position.set(...world)
-  if (parent) {
-    parent.updateMatrixWorld(true)
-    parent.worldToLocal(b.position)
-    parent.add(b)
-  }
-  Object.assign(b.userData, options)
-  b.updateMatrixWorld(true)
-  return b
-}
 
 /** The meshes of a scene as one world-space triangle soup (what section, parts and skin measure). */
 interface Soup {
@@ -159,14 +132,15 @@ export async function skin(object: THREE.Object3D, root: THREE.Bone, options: Sk
 }
 
 function toSkeletonBone(bone: THREE.Bone): SkeletonBone {
-  const data = bone.userData as { tail?: Vec3; deform?: boolean; pieces?: number[] }
+  const pieces = (bone.userData as { pieces?: number[] }).pieces
+  const leaf = !bone.children.some((child) => child instanceof THREE.Bone)
   return {
     name: bone.name,
     parent: bone.parent instanceof THREE.Bone ? bone.parent.name : undefined,
     position: bone.getWorldPosition(new THREE.Vector3()).toArray(),
-    tail: data.tail,
-    deform: data.deform,
-    pieces: data.pieces,
+    // End bones mark where a chain ends; a pieces bone drives only its pieces
+    deform: !leaf && !pieces,
+    pieces,
   }
 }
 

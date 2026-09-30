@@ -7,7 +7,7 @@
 
 import { readFileSync } from 'node:fs'
 import * as THREE from 'three'
-import { bone, load, render, save, section, skin } from '@drawcall/rig'
+import { load, render, save, section, skin } from '@drawcall/rig'
 
 const scene = await load('horse.glb')
 
@@ -39,12 +39,19 @@ interface JointSpec {
 /** Bones from world-space joint positions (identity rotations); returns the root. */
 function buildBones(specs: JointSpec[]): THREE.Bone {
   const made = new Map<string, THREE.Bone>()
-  // Parents first, so bone() can place each child in its parent's space
+  const at = (name: string, [x, y, z]: [number, number, number], parent?: THREE.Bone) => {
+    const b = Object.assign(new THREE.Bone(), { name })
+    b.position.set(x, y, z)
+    parent?.attach(b)
+    return b
+  }
+  // Parents first; a spec's tail becomes an end bone, the convention skin() uses to end a chain
   const place = (spec: JointSpec): THREE.Bone => {
     const existing = made.get(spec.name)
     if (existing) return existing
     const parentSpec = specs.find((s) => s.name === spec.parent)
-    const b = bone(spec.name, spec.position, parentSpec && place(parentSpec), { tail: spec.tail, deform: spec.deform })
+    const b = at(spec.name, spec.position, parentSpec && place(parentSpec))
+    if (spec.tail) at(`${spec.name}_end`, spec.tail, b)
     made.set(spec.name, b)
     return b
   }

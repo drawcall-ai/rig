@@ -16,10 +16,18 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { validateBytes } from 'gltf-validator'
 import * as THREE from 'three'
-import { bone, load, parts, render, save, section, skin } from '../src/index.js'
+import { load, parts, render, save, section, skin } from '../src/index.js'
 import { makeCapsule } from './capsule.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
+
+/** The idiom the docs teach: a bone at a world position, attached (keeping it) under its parent. */
+function bone(name: string, world: [number, number, number], parent?: THREE.Bone): THREE.Bone {
+  const b = Object.assign(new THREE.Bone(), { name })
+  b.position.set(...world)
+  parent?.attach(b)
+  return b
+}
 
 // Capsules y in [-1, 1], instanced twice under a transformed parent, one mirrored
 {
@@ -43,18 +51,17 @@ const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
   const before = new THREE.Box3().setFromObject(scene)
 
   assert.equal(parts(scene).length, 2, 'two separate capsules')
-  const root = bone('root', [0, 0, 0])
-  root.userData.deform = false
-  const leftLow = bone('leftLow', [-2, 0.3, 0], root)
-  bone('leftHigh', [-2, 2, 0], leftLow).userData.tail = [-2, 3.7, 0]
+  const leftLow = bone('leftLow', [-2, 0.3, 0])
+  const leftHigh = bone('leftHigh', [-2, 2, 0], leftLow)
+  bone('leftHigh_end', [-2, 3.7, 0], leftHigh)
   // The right capsule is one rigid piece
-  const prop = bone('prop', [2, 2, 0], root)
+  const prop = bone('prop', [2, 2, 0], leftLow)
   prop.userData.pieces = [parts(scene).find((p) => p.center[0] > 0)?.index]
 
-  const report = await skin(scene, root, { resolution: 64 })
+  const report = await skin(scene, leftLow, { resolution: 64 })
   assert.deepEqual(report.warnings, [])
   const byName = new Map(report.bones.map((b) => [b.name, b]))
-  assert.equal(byName.get('root')?.vertices, 0)
+  assert.equal(byName.get('leftHigh_end')?.vertices, 0, 'end bones get no weights')
   assert.equal(byName.get('prop')?.vertices, capsule.positions.length / 3, 'prop owns the right capsule whole')
   for (const name of ['leftLow', 'leftHigh']) assert.ok((byName.get(name)?.vertices ?? 0) > 500, `${name} drives the left capsule`)
 
@@ -76,11 +83,11 @@ const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
 
   const hips = bone('hips', [0, 40, -25])
   const chest = bone('chest', [0, 40, 15], hips)
-  bone('head', [0, 60, 35], chest).userData.tail = [0, 60, 60]
-  bone('tail', [0, 35, -45], hips).userData.tail = [0, 15, -80]
+  bone('head_end', [0, 60, 60], bone('head', [0, 60, 35], chest))
+  bone('tail_end', [0, 15, -80], bone('tail', [0, 35, -45], hips))
   for (const [side, x] of [['L', 6], ['R', -6]] as const) {
-    bone(`front_${side}`, [x, 30, 18], chest).userData.tail = [x, 2, 18]
-    bone(`back_${side}`, [x, 30, -36], hips).userData.tail = [x, 2, -36]
+    bone(`front_${side}_end`, [x, 2, 18], bone(`front_${side}`, [x, 30, 18], chest))
+    bone(`back_${side}_end`, [x, 2, -36], bone(`back_${side}`, [x, 30, -36], hips))
   }
   const report = await skin(scene, hips)
   assert.deepEqual(report.warnings, [])
@@ -105,7 +112,10 @@ const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
     if (node instanceof THREE.Bone) joints.push(node.name)
     if (node instanceof THREE.Mesh && (node.material as THREE.MeshStandardMaterial).map) textured = true
   })
-  assert.deepEqual(joints.sort(), ['back_L', 'back_R', 'chest', 'front_L', 'front_R', 'head', 'hips', 'tail'])
+  assert.deepEqual(joints.sort(), [
+    'back_L', 'back_L_end', 'back_R', 'back_R_end', 'chest', 'front_L', 'front_L_end', 'front_R', 'front_R_end',
+    'head', 'head_end', 'hips', 'tail', 'tail_end',
+  ])
   assert.ok(textured, 'textures survive')
   const front = again.getObjectByName('front_L')
   assert.ok(front && front.rotation.z === 0, 'saved in the bind pose')
@@ -117,11 +127,12 @@ const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
   const scene = await load(fileURLToPath(new URL('./fixtures/robot.glb', import.meta.url)))
   const hips = bone('Hips', [0, 1.42, 0])
   const spine = bone('Spine', [0, 2.2, 0], hips)
-  bone('Head', [0, 2.8, 0], spine, { tail: [0, 4.4, 0] })
+  bone('HeadTop_End', [0, 4.4, 0], bone('Head', [0, 2.8, 0], spine))
   for (const x of [0.6, -0.6]) {
-    const arm = bone(x > 0 ? 'LeftArm' : 'RightArm', [x, 2.37, 0], spine)
-    bone(x > 0 ? 'LeftForeArm' : 'RightForeArm', [1.5 * x, 1.75, 0], arm, { tail: [2.3 * x, 1, 1] })
-    bone(x > 0 ? 'LeftUpLeg' : 'RightUpLeg', [x, 1.3, 0], hips, { tail: [x, 0, 0] })
+    const side = x > 0 ? 'Left' : 'Right'
+    const arm = bone(`${side}Arm`, [x, 2.37, 0], spine)
+    bone(`${side}Hand`, [2.3 * x, 1, 1], bone(`${side}ForeArm`, [1.5 * x, 1.75, 0], arm))
+    bone(`${side}Foot`, [x, 0, 0], bone(`${side}UpLeg`, [x, 1.3, 0], hips))
   }
   await skin(scene, hips)
   // Mesh names can change on reload (three.js suffixes names that clashed with the old bones), so compare
