@@ -7,7 +7,7 @@
 
 import { readFileSync } from 'node:fs'
 import * as THREE from 'three'
-import { load, render, save, section, skin } from '@drawcall/rig'
+import { bone, load, render, save, section, skin } from '@drawcall/rig'
 
 const scene = await load('horse.glb')
 
@@ -38,14 +38,16 @@ interface JointSpec {
 
 /** Bones from world-space joint positions (identity rotations); returns the root. */
 function buildBones(specs: JointSpec[]): THREE.Bone {
-  const bones = new Map(specs.map((spec) => [spec.name, Object.assign(new THREE.Bone(), { name: spec.name })]))
-  for (const spec of specs) {
-    const bone = bones.get(spec.name) as THREE.Bone
-    const parent = spec.parent ? specs.find((s) => s.name === spec.parent) : undefined
-    bone.position.set(...spec.position)
-    if (parent) bone.position.sub(new THREE.Vector3(...parent.position))
-    if (spec.parent) bones.get(spec.parent)?.add(bone)
-    Object.assign(bone.userData, { tail: spec.tail, deform: spec.deform })
+  const made = new Map<string, THREE.Bone>()
+  // Parents first, so bone() can place each child in its parent's space
+  const place = (spec: JointSpec): THREE.Bone => {
+    const existing = made.get(spec.name)
+    if (existing) return existing
+    const parentSpec = specs.find((s) => s.name === spec.parent)
+    const b = bone(spec.name, spec.position, parentSpec && place(parentSpec), { tail: spec.tail, deform: spec.deform })
+    made.set(spec.name, b)
+    return b
   }
-  return bones.get(specs.find((spec) => !spec.parent)?.name ?? '') as THREE.Bone
+  specs.forEach(place)
+  return made.get(specs.find((spec) => !spec.parent)?.name ?? '') as THREE.Bone
 }

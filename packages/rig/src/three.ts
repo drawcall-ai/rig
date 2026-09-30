@@ -7,7 +7,8 @@
  * Per-bone options live in bone.userData:
  *   tail: [x, y, z]  world-space end of the bone (default: its first child; a leaf extends its parent)
  *   deform: false    the bone is animated but attracts no weights
- *   pieces: [i, ...] bind these separate mesh pieces (indices from parts()) 100% to the bone
+ *   pieces: [i, ...] bind these separate mesh pieces (indices from parts()) 100% to the bone; such a bone
+ *                    drives only its pieces unless it also has deform: true
  */
 
 import * as THREE from 'three'
@@ -19,6 +20,33 @@ import { computeWeights, meshParts, type SkinOptions, type SkinReport } from './
 
 export type { Axis, SliceRegion, SliceResult } from './section.js'
 export type { BoneReport, SkinOptions, SkinReport } from './weights.js'
+
+export interface BoneOptions {
+  /** World-space end of the bone (default: its first child; a leaf extends its parent). */
+  tail?: Vec3
+  /** false: animated, but attracts no weights. With pieces: true to also take automatic weights. */
+  deform?: boolean
+  /** Separate mesh pieces (indices from parts()) bound 100% to this bone. */
+  pieces?: number[]
+}
+
+/**
+ * A THREE.Bone named `name` whose joint sits at `world` (world space), added under `parent`
+ * (positions are converted to the parent's space). The options go to bone.userData.
+ */
+export function bone(name: string, world: Vec3, parent?: THREE.Bone, options: BoneOptions = {}): THREE.Bone {
+  const b = new THREE.Bone()
+  b.name = name
+  b.position.set(...world)
+  if (parent) {
+    parent.updateMatrixWorld(true)
+    parent.worldToLocal(b.position)
+    parent.add(b)
+  }
+  Object.assign(b.userData, options)
+  b.updateMatrixWorld(true)
+  return b
+}
 
 /** The meshes of a scene as one world-space triangle soup (what section, parts and skin measure). */
 interface Soup {

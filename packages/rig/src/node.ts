@@ -14,7 +14,7 @@ import draco3d from 'draco3dgltf'
 import { MeshoptDecoder } from 'meshoptimizer'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { readScene, writeSkin, type RigJoint } from './gltf.js'
+import { readScene, writeSkin, type BakedVertices, type RigJoint } from './gltf.js'
 import type { Vec3 } from './solve.js'
 
 installDOM()
@@ -66,14 +66,18 @@ export async function save(object: THREE.Object3D, path: string): Promise<void> 
   const total = parts.reduce((sum, part) => sum + part.count, 0)
   const skinIndices = new Uint16Array(total * 4)
   const skinWeights = new Float32Array(total * 4)
+  // Write the vertices skin() baked, exactly as they were seen and checked, not a re-bake of the source
+  const baked: (BakedVertices | undefined)[] = []
   for (const part of parts) {
     const key = `${nodes.indexOf(part.node)}:${part.node.getMesh()?.listPrimitives().indexOf(part.primitive)}`
     const mesh = byKey.get(key)
     if (!mesh) {
       // Primitives three.js does not load as meshes (points, lines) follow the root joint
       for (let v = 0; v < part.count; v++) skinWeights[(part.offset + v) * 4] = 1
+      baked.push(undefined)
       continue
     }
+    baked.push({ position: floats(mesh.geometry.getAttribute('position')), normal: mesh.geometry.getAttribute('normal') && floats(mesh.geometry.getAttribute('normal')) })
     const indices = mesh.geometry.getAttribute('skinIndex')
     const weights = mesh.geometry.getAttribute('skinWeight')
     if (indices.count !== part.count) throw new Error(`mesh "${mesh.name}" has ${indices.count} vertices, the source primitive ${part.count}`)
@@ -103,10 +107,21 @@ export async function save(object: THREE.Object3D, path: string): Promise<void> 
       inverseBind: skeleton.boneInverses[i].elements,
     }
   })
-  writeSkin(document, joints, parts, skinIndices, skinWeights)
+  writeSkin(document, joints, parts, skinIndices, skinWeights, baked)
   const out = resolve(path)
   mkdirSync(dirname(out), { recursive: true })
   await io.write(out, withoutCompression(document))
+}
+
+/** A vec3 attribute as a tightly packed Float32Array (attributes may be interleaved). */
+function floats(attribute: THREE.BufferAttribute | THREE.InterleavedBufferAttribute): Float32Array {
+  const out = new Float32Array(attribute.count * 3)
+  for (let i = 0; i < attribute.count; i++) {
+    out[i * 3] = attribute.getX(i)
+    out[i * 3 + 1] = attribute.getY(i)
+    out[i * 3 + 2] = attribute.getZ(i)
+  }
+  return out
 }
 
 async function createIO(): Promise<NodeIO> {
@@ -308,6 +323,7 @@ function makeGrid(camera: THREE.OrthographicCamera, center: THREE.Vector3, radiu
 /** Heatmap / x-ray materials for the render; returns a function restoring the originals. */
 function paint(object: THREE.Object3D, options: RenderOptions): () => void {
   const originals = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>()
+  const restoreColors: (() => void)[] = []
   object.traverse((node) => {
     if (!(node instanceof THREE.Mesh) || node.userData.rigHelper) return
     originals.set(node, node.material)
@@ -324,14 +340,20 @@ function paint(object: THREE.Object3D, options: RenderOptions): () => void {
         color.setHSL(0.66 * (1 - w), 0.9, w > 0 ? 0.5 : 0.18)
         colors.set([color.r, color.g, color.b], v * 3)
       }
+      // Keep the model's own vertex colors to put back afterwards
+      const own = node.geometry.getAttribute('color')
       node.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
       node.material = new THREE.MeshBasicMaterial({ vertexColors: true })
+      restoreColors.push(() => (own ? node.geometry.setAttribute('color', own) : node.geometry.deleteAttribute('color')))
     } else if (options.xray) {
-      node.material = [node.material].flat().map((m) => Object.assign(m.clone(), { transparent: true, opacity: 0.3, depthWrite: false }))
+      // Keep a single material single: an array renders nothing on geometry without groups
+      const seeThrough = (m: THREE.Material) => Object.assign(m.clone(), { transparent: true, opacity: 0.3, depthWrite: false })
+      node.material = Array.isArray(node.material) ? node.material.map(seeThrough) : seeThrough(node.material)
     }
   })
   return () => {
     for (const [mesh, material] of originals) mesh.material = material
+    for (const restore of restoreColors) restore()
   }
 }
 

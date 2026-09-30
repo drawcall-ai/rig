@@ -200,6 +200,8 @@ export function writeSkin(
   parts: ScenePart[],
   skinIndices: Uint16Array,
   skinWeights: Float32Array,
+  /** Per part, world-space vertices to write instead of re-baking the source (the bind pose the caller saw). */
+  baked: (BakedVertices | undefined)[] = [],
 ): void {
   const root = document.getRoot()
   const scene = root.getDefaultScene() ?? root.listScenes()[0]
@@ -224,7 +226,7 @@ export function writeSkin(
   const oldSkins = new Set<Skin>(root.listSkins().filter((other) => other !== skin))
   const oldJoints = new Set<Node>([...oldSkins].flatMap((other) => other.listJoints()))
   const skinnedNodes = new Map<Node, Node>()
-  for (const part of parts) {
+  for (const [p, part] of parts.entries()) {
     let skinned = skinnedNodes.get(part.node)
     if (!skinned) {
       const mesh = part.node.getMesh() as Mesh
@@ -238,7 +240,7 @@ export function writeSkin(
       skinnedNodes.set(part.node, skinned)
       oldMeshes.add(mesh)
     }
-    ;(skinned.getMesh() as Mesh).addPrimitive(bakePrimitive(document, buffer, part, skinIndices, skinWeights))
+    ;(skinned.getMesh() as Mesh).addPrimitive(bakePrimitive(document, buffer, part, skinIndices, skinWeights, baked[p]))
   }
 
   for (const [original, skinned] of skinnedNodes) {
@@ -287,12 +289,18 @@ function removeOldRig(root: Root, oldJoints: Set<Node>, newJoints: Set<Node>): v
 }
 
 /** A copy of the part's primitive with world-space vertex data and the new JOINTS_0/WEIGHTS_0. */
+export interface BakedVertices {
+  position: Float32Array
+  normal?: Float32Array
+}
+
 function bakePrimitive(
   document: Document,
   buffer: Buffer,
   part: ScenePart,
   skinIndices: Uint16Array,
   skinWeights: Float32Array,
+  baked?: BakedVertices,
 ): Primitive {
   const primitive = part.primitive.clone()
   const { count, matrices } = part
@@ -310,8 +318,12 @@ function bakePrimitive(
     }
     return document.createAccessor().setType('VEC3').setArray(out).setBuffer(buffer)
   }
-  primitive.setAttribute('POSITION', bake(primitive.getAttribute('POSITION'), transformPoint))
-  primitive.setAttribute('NORMAL', bake(primitive.getAttribute('NORMAL'), transformNormal, true))
+  const vec3 = (array: Float32Array) => document.createAccessor().setType('VEC3').setArray(array).setBuffer(buffer)
+  primitive.setAttribute('POSITION', baked ? vec3(baked.position) : bake(primitive.getAttribute('POSITION'), transformPoint))
+  primitive.setAttribute(
+    'NORMAL',
+    baked?.normal ? vec3(baked.normal) : bake(primitive.getAttribute('NORMAL'), transformNormal, true),
+  )
   const tangent = primitive.getAttribute('TANGENT')
   if (tangent) {
     const out = new Float32Array(count * 4)

@@ -2,7 +2,9 @@
  * The public API end to end: skin() on an in-memory three.js scene (world
  * baking, instancing, mirroring, pieces), and load -> section/parts -> skin ->
  * render -> save on the already-rigged, textured Fox sample, with the saved
- * file checked by the Khronos glTF validator and loaded back.
+ * file checked by the Khronos glTF validator and loaded back; and the three.js
+ * RobotExpressive sample (its own armature, hands posed through non-identity
+ * mesh nodes), whose saved file must match the in-memory rig vertex for vertex.
  *
  *   pnpm --filter @drawcall/rig test
  */
@@ -14,24 +16,10 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { validateBytes } from 'gltf-validator'
 import * as THREE from 'three'
-import { load, parts, render, save, section, skin } from '../src/index.js'
+import { bone, load, parts, render, save, section, skin } from '../src/index.js'
 import { makeCapsule } from './capsule.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
-
-/** A named bone at a world position under `parent` (whose world matrix is current). */
-function bone(name: string, world: [number, number, number], parent?: THREE.Bone): THREE.Bone {
-  const b = new THREE.Bone()
-  b.name = name
-  b.position.set(...world)
-  if (parent) {
-    parent.updateMatrixWorld(true)
-    parent.worldToLocal(b.position)
-    parent.add(b)
-  }
-  b.updateMatrixWorld(true)
-  return b
-}
 
 // Capsules y in [-1, 1], instanced twice under a transformed parent, one mirrored
 {
@@ -122,6 +110,39 @@ function bone(name: string, world: [number, number, number], parent?: THREE.Bone
   const front = again.getObjectByName('front_L')
   assert.ok(front && front.rotation.z === 0, 'saved in the bind pose')
   console.log('fox ok:', report.vertices, 'vertices,', joints.length, 'joints')
+}
+
+// Robot: already rigged, hands are SkinnedMeshes under transformed nodes
+{
+  const scene = await load(fileURLToPath(new URL('./fixtures/robot.glb', import.meta.url)))
+  const hips = bone('Hips', [0, 1.42, 0])
+  const spine = bone('Spine', [0, 2.2, 0], hips)
+  bone('Head', [0, 2.8, 0], spine, { tail: [0, 4.4, 0] })
+  for (const x of [0.6, -0.6]) {
+    const arm = bone(x > 0 ? 'LeftArm' : 'RightArm', [x, 2.37, 0], spine)
+    bone(x > 0 ? 'LeftForeArm' : 'RightForeArm', [1.5 * x, 1.75, 0], arm, { tail: [2.3 * x, 1, 1] })
+    bone(x > 0 ? 'LeftUpLeg' : 'RightUpLeg', [x, 1.3, 0], hips, { tail: [x, 0, 0] })
+  }
+  skin(scene, hips)
+  // Mesh names can change on reload (three.js suffixes names that clashed with the old bones), so compare
+  // the set of per-mesh bounding boxes
+  const boxes = (object: THREE.Object3D) => {
+    const out: number[][] = []
+    object.traverse((node) => {
+      if (node instanceof THREE.SkinnedMesh) {
+        const box = new THREE.Box3().setFromObject(node, true)
+        out.push([...box.min.toArray(), ...box.max.toArray()].map((n) => Math.round(n * 1000) / 1000))
+      }
+    })
+    return out.sort((p, q) => p.join().localeCompare(q.join()))
+  }
+  const before = boxes(scene)
+  const out = join(dir, 'robot.glb')
+  await save(scene, out)
+  const after = boxes(await load(out))
+  assert.equal(after.length, before.length)
+  before.forEach((box, i) => assert.ok(box.every((n, k) => Math.abs(n - after[i][k]) < 2e-3), `a mesh moved in save: ${box} vs ${after[i]}`))
+  console.log('robot ok:', before.length, 'meshes identical after save')
 }
 
 rmSync(dir, { recursive: true })

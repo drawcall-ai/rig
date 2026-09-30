@@ -20,10 +20,10 @@ const SCREEN: Record<Axis, [Axis, Axis]> = { x: ['z', 'y'], y: ['x', 'z'], z: ['
 export interface SliceRegion {
   /** Solid cells in the region (area = cells * cellSize^2). */
   cells: number
-  /** World-space center and extent on the slice's two in-plane axes, e.g. { x: .., z: .. } for a y slice. */
-  center: Partial<Record<Axis, number>>
-  min: Partial<Record<Axis, number>>
-  max: Partial<Record<Axis, number>>
+  /** World-space [x, y, z] center and bounds; the cut axis holds the plane's value. Usable as a joint position. */
+  center: [number, number, number]
+  min: [number, number, number]
+  max: [number, number, number]
 }
 
 export interface SliceResult {
@@ -86,6 +86,13 @@ function sliceGrid(volume: VoxelVolume, slice: Slice) {
   const rank = found.map((r) => (r >= 0 ? rankOf[r] : -1))
 
   const world = (axis: number, cellIndex: number): number => volume.min[axis] + (cellIndex + 0.5) * volume.cellSize
+  const point = (hValue: number, vValue: number): [number, number, number] => {
+    const p: [number, number, number] = [0, 0, 0]
+    p[a] = world(a, index)
+    p[hi] = hValue
+    p[vi] = vValue
+    return p
+  }
   const crop: [number, number, number, number] = [Infinity, -Infinity, Infinity, -Infinity]
   const regions = order.map((r): SliceRegion => {
     let sumH = 0, sumV = 0
@@ -103,9 +110,9 @@ function sliceGrid(volume: VoxelVolume, slice: Slice) {
     const n = lists[r].length
     return {
       cells: n,
-      center: { [h]: world(hi, sumH / n), [v]: world(vi, sumV / n) },
-      min: { [h]: world(hi, minH), [v]: world(vi, minV) },
-      max: { [h]: world(hi, maxH), [v]: world(vi, maxV) },
+      center: point(world(hi, sumH / n), world(vi, sumV / n)),
+      min: point(world(hi, minH), world(vi, minV)),
+      max: point(world(hi, maxH), world(vi, maxV)),
     }
   })
   const result: SliceResult = { axis: slice.axis, value: world(a, index), regions }
