@@ -16,18 +16,10 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { validateBytes } from 'gltf-validator'
 import * as THREE from 'three'
-import { load, parts, render, save, section, skin } from '../src/index.js'
+import { bone, load, parts, render, save, section, skin } from '../src/index.js'
 import { makeCapsule } from './capsule.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
-
-/** The idiom the docs teach: a bone at a world position, attached (keeping it) under its parent. */
-function bone(name: string, world: [number, number, number], parent?: THREE.Bone): THREE.Bone {
-  const b = Object.assign(new THREE.Bone(), { name })
-  b.position.set(...world)
-  parent?.attach(b)
-  return b
-}
 
 // Capsules y in [-1, 1], instanced twice under a transformed parent, one mirrored
 {
@@ -74,6 +66,31 @@ function bone(name: string, world: [number, number, number], parent?: THREE.Bone
   console.log('capsule scene ok:', report.vertices, 'vertices')
 }
 
+// Low-poly tube with vertex rings at y = 0..4: flat caps (the top one on the bounding plane) must fill the
+// solid, and a joint with no ring before the next one gets a suggested position that fixes it
+{
+  const tube = () => {
+    const geometry = new THREE.CylinderGeometry(0.3, 0.3, 4, 8, 4)
+    geometry.translate(0, 2, 0)
+    return new THREE.Group().add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial()))
+  }
+  const axis = section(tube(), 'y', [2], 64)[0]?.regions[0]
+  assert.ok(axis && axis.cells > 60, `tube interior is filled (${axis?.cells} cells)`)
+
+  const rig = (midY: number) => {
+    const root = bone('root', [0, 0.05, 0])
+    bone('end', [0, 3.95, 0], bone('top', [0, 1.3, 0], bone('mid', [0, midY, 0], root)))
+    return root
+  }
+  const stuck = await skin(tube(), rig(1.1), { resolution: 64 })
+  const hint = stuck.warnings.find((w) => w.includes('"mid"'))?.match(/about \[([^\]]+)\]/)
+  assert.ok(hint, `warning suggests a position: ${stuck.warnings}`)
+  const suggested = Number(hint[1].split(',')[1])
+  const fixed = await skin(tube(), rig(suggested), { resolution: 64 })
+  assert.deepEqual(fixed.warnings, [], 'following the suggestion clears the warning')
+  console.log('tube ok: suggested y', suggested)
+}
+
 // Fox: already skinned + textured + animated
 {
   const fixture = fileURLToPath(new URL('./fixtures/fox.glb', import.meta.url))
@@ -99,6 +116,15 @@ function bone(name: string, world: [number, number, number], parent?: THREE.Bone
   scene.getObjectByName('front_L')?.rotation.set(0, 0, 1)
   const png = await render(scene, { out: join(dir, 'fox.png'), weights: 'front_L', labels: true })
   assert.ok(statSync(png).size > 10_000, 'rendered a PNG')
+  // A pose sheet renders each pose from the bind pose and returns to it
+  const sheet = await render(scene, {
+    out: join(dir, 'rom.png'),
+    views: ['+x'],
+    poses: [{ title: 'rest', rotations: {} }, { title: 'head down', rotations: { head: [0.8, 0, 0] } }],
+  })
+  assert.ok(statSync(sheet).size > 10_000)
+  assert.ok(Math.abs(scene.getObjectByName('head')?.rotation.x ?? 1) < 1e-6, 'back in the bind pose')
+  scene.getObjectByName('front_L')?.rotation.set(0, 0, 1)
   const out = join(dir, 'fox.glb')
   await save(scene, out)
 

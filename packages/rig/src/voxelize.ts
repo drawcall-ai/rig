@@ -4,7 +4,9 @@
  * directions. Grid order is x-major: index = x * dimY * dimZ + y * dimZ + z.
  *
  * Bit-identical to the original @drawcall/rigged voxelizer (vendored in
- * test/reference/voxel-volume.ts), which parity.test.ts checks.
+ * test/reference/voxel-volume.ts, checked by parity.test.ts), except that
+ * faces lying exactly on the top bounding plane are kept (the original drops
+ * them, which leaves flat-topped models open and unfilled).
  */
 
 export interface VoxelVolume {
@@ -122,12 +124,13 @@ function computeSurfaceVoxelsFast(
     const triMaxY = Math.max(v0y, v1y, v2y)
     const triMaxZ = Math.max(v0z, v1z, v2z)
 
-    const minVoxelX = Math.max(0, Math.floor((triMinX - minX) * invCellSize))
-    const minVoxelY = Math.max(0, Math.floor((triMinY - minY) * invCellSize))
-    const minVoxelZ = Math.max(0, Math.floor((triMinZ - minZ) * invCellSize))
+    const minVoxelX = Math.min(dimX - 1, Math.max(0, Math.floor((triMinX - minX) * invCellSize)))
+    const minVoxelY = Math.min(dimY - 1, Math.max(0, Math.floor((triMinY - minY) * invCellSize)))
+    const minVoxelZ = Math.min(dimZ - 1, Math.max(0, Math.floor((triMinZ - minZ) * invCellSize)))
     const maxVoxelX = Math.min(dimX - 1, Math.floor((triMaxX - minX) * invCellSize))
     const maxVoxelY = Math.min(dimY - 1, Math.floor((triMaxY - minY) * invCellSize))
     const maxVoxelZ = Math.min(dimZ - 1, Math.floor((triMaxZ - minZ) * invCellSize))
+    // (min is clamped too: a face lying exactly on the top bounding plane falls in the last cell, not past it)
 
     // Quick check: if triangle spans only 1 voxel in each dimension, just mark it
     if (minVoxelX === maxVoxelX && minVoxelY === maxVoxelY && minVoxelZ === maxVoxelZ) {

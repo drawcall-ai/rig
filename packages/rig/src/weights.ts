@@ -87,10 +87,13 @@ export async function computeWeights(
       )
     }
     if (bone.inside > 0 && bone.vertices === 0) {
+      const gap = ringGap(bones, i, positions)
       report.warnings.push(
         `bone "${bone.name}" is the main influence of no vertex (${bone.weighted} vertices have >=10% weight): ` +
-          `no vertices lie mostly in its section, common on low-poly meshes. It still bends its children; ` +
-          `to give it vertices, move its joints so a ring of vertices falls between them`,
+          `no vertex ring lies between its joint and the next, common on low-poly meshes. It still bends its children. ` +
+          (gap
+            ? `Nearest gap between vertex rings along this chain: move the joint to about [${gap.map((n) => +n.toPrecision(4)).join(', ')}]`
+            : `Move its joint so a ring of vertices falls between it and the next joint`),
       )
     }
   }
@@ -108,6 +111,59 @@ export async function computeWeights(
     )
   }
   return { skinIndices: solved.skinIndices, skinWeights: solved.skinWeights, report }
+}
+
+/**
+ * Where a joint should go on a low-poly limb: vertices near the chain parent -> bone -> child are
+ * projected onto it, and the middle of the empty stretch between vertex rings nearest the current
+ * joint is returned (world space), or null when there is no clear gap.
+ */
+function ringGap(bones: ResolvedBone[], index: number, positions: Float32Array): Vec3 | null {
+  const bone = bones[index]
+  if (bone.parentIndex < 0) return null
+  const a = bones[bone.parentIndex].position
+  const b = bone.position
+  const c = bone.tail
+  const lengths = [Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]), Math.hypot(c[0] - b[0], c[1] - b[1], c[2] - b[2])]
+  const total = lengths[0] + lengths[1]
+  if (!(total > 0)) return null
+  const radius = total * 0.35
+  // Arc-length position along the two-segment chain of every vertex close to it
+  const along: number[] = []
+  for (let v = 0; v < positions.length / 3; v++) {
+    let best = Infinity
+    let s = 0
+    let beyond = false
+    for (const [k, [p, q]] of [[a, b], [b, c]].entries()) {
+      const d = [q[0] - p[0], q[1] - p[1], q[2] - p[2]]
+      const len2 = d[0] ** 2 + d[1] ** 2 + d[2] ** 2
+      const w = [positions[v * 3] - p[0], positions[v * 3 + 1] - p[1], positions[v * 3 + 2] - p[2]]
+      const raw = len2 > 0 ? (w[0] * d[0] + w[1] * d[1] + w[2] * d[2]) / len2 : 0
+      const t = Math.max(0, Math.min(1, raw))
+      const dist = Math.hypot(w[0] - d[0] * t, w[1] - d[1] * t, w[2] - d[2] * t)
+      if (dist < best) {
+        best = dist
+        s = (k === 0 ? 0 : lengths[0]) + t * lengths[k]
+        // Past the chain's ends (not just past the middle joint) doesn't count
+        beyond = (k === 0 && raw < -1e-6) || (k === 1 && raw > 1 + 1e-6)
+      }
+    }
+    if (best < radius && !beyond) along.push(s)
+  }
+  if (along.length === 0) return null
+  along.sort((p, q) => p - q)
+  // A joint in a gap whose far edge is a ring before the child leaves that ring between the joint and the
+  // child, so the bone gets vertices. The chain start counts as a gap edge. Nearest such gap wins.
+  const edges = [0, ...along.filter((s) => s < total - 1e-6)]
+  let pick: number | null = null
+  for (let i = 1; i < edges.length; i++) {
+    if (edges[i] - edges[i - 1] < total * 0.1) continue
+    const middle = (edges[i] + edges[i - 1]) / 2
+    if (pick === null || Math.abs(middle - lengths[0]) < Math.abs(pick - lengths[0])) pick = middle
+  }
+  if (pick === null) return null
+  const [p, q, t] = pick <= lengths[0] ? [a, b, pick / lengths[0]] : [b, c, (pick - lengths[0]) / lengths[1]]
+  return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t]
 }
 
 /** Vertices with all-zero weights get weight 1 on the nearest bone line. */

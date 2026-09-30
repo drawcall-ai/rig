@@ -21,6 +21,18 @@ import { computeWeights, meshParts, type SkinOptions, type SkinReport } from './
 export type { Axis, SliceRegion, SliceResult } from './section.js'
 export type { BoneReport, SkinOptions, SkinReport } from './weights.js'
 
+/**
+ * A THREE.Bone named `name` with its joint at `world` (world space), attached under `parent` if given
+ * (parent.attach keeps the world position). The same as doing it by hand; it saves three lines per bone.
+ */
+export function bone(name: string, world: Vec3, parent?: THREE.Bone): THREE.Bone {
+  const b = new THREE.Bone()
+  b.name = name
+  b.position.set(...world)
+  parent?.attach(b)
+  return b
+}
+
 /** The meshes of a scene as one world-space triangle soup (what section, parts and skin measure). */
 interface Soup {
   meshes: THREE.Mesh[]

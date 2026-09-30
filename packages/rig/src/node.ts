@@ -166,6 +166,12 @@ export interface RenderOptions {
   xray?: boolean
   /** Caption drawn above the views. */
   title?: string
+  /**
+   * A sheet of poses, one row each (all views per row): every pose starts from the bind pose and sets
+   * the listed bones' rotations (radians, Euler XYZ); the scene returns to the bind pose afterwards.
+   * E.g. a range-of-motion check: [{ title: 'arm up', rotations: { LeftArm: [0, 0, 1.2] } }, ...].
+   */
+  poses?: { title?: string; rotations: Record<string, [number, number, number]> }[]
 }
 
 let renderer: THREE.WebGLRenderer | undefined
@@ -204,6 +210,7 @@ export async function render(object: THREE.Object3D, options: RenderOptions): Pr
   stage.add(object)
   const showBones = options.bones ?? bones.length > 0
   const helpers: THREE.Object3D[] = []
+  const markers: THREE.Mesh[] = []
   if (showBones && bones.length) {
     const lines = new THREE.SkeletonHelper(object)
     const marker = new THREE.SphereGeometry((focus?.radius ?? radius) * 0.012)
@@ -214,21 +221,35 @@ export async function render(object: THREE.Object3D, options: RenderOptions): Pr
       const sphere = new THREE.Mesh(marker, material)
       sphere.renderOrder = 2
       sphere.userData.rigHelper = true
-      bone.getWorldPosition(sphere.position)
+      markers.push(sphere)
       helpers.push(sphere)
     }
   }
   if (helpers.length) stage.add(...helpers)
   const restore = paint(object, options)
 
-  const cols = Math.min(views.length, 4)
+  const poses = options.poses ?? [undefined]
+  const skeletons = new Set<THREE.Skeleton>()
+  object.traverse((node) => node instanceof THREE.SkinnedMesh && skeletons.add(node.skeleton))
+  const byName = new Map(bones.map((bone) => [bone.name, bone]))
+  for (const pose of options.poses ?? []) {
+    for (const name of Object.keys(pose.rotations)) if (!byName.has(name)) throw new Error(`pose names unknown bone "${name}"`)
+  }
+  const cells = poses.flatMap((pose) => views.map((view) => ({ pose, view })))
+  const cols = options.poses ? views.length : Math.min(views.length, 4)
   const title = options.title ? 30 : 0
-  const sheet = create2d(cols * size, Math.ceil(views.length / cols) * size + title)
+  const sheet = create2d(cols * size, Math.ceil(cells.length / cols) * size + title)
   const ctx = sheet.getContext('2d')
   ctx.fillStyle = '#2a2d31'
   ctx.fillRect(0, 0, sheet.width, sheet.height)
   try {
-    for (const [i, view] of views.entries()) {
+    for (const [i, { pose, view }] of cells.entries()) {
+      if (pose) {
+        for (const skeleton of skeletons) skeleton.pose()
+        for (const [name, rotation] of Object.entries(pose.rotations)) byName.get(name)?.rotation.set(...rotation)
+      }
+      object.updateMatrixWorld(true)
+      bones.forEach((bone, k) => markers[k] && bone.getWorldPosition(markers[k].position))
       const camera = frame(view, center, focus?.radius ?? radius, extent, radius)
       const grid = camera instanceof THREE.OrthographicCamera ? makeGrid(camera, center, radius) : undefined
       if (grid) stage.add(grid.lines)
@@ -243,10 +264,11 @@ export async function render(object: THREE.Object3D, options: RenderOptions): Pr
       }
       for (const [world, label] of grid?.labels ?? []) text(world, label, '#9aa4b1', 2, -4)
       if (options.labels && showBones) for (const bone of bones) text(bone.getWorldPosition(new THREE.Vector3()), bone.name, '#ffd23f')
-      write(ctx, view, '#ffffff', x + 8, y + 18)
+      write(ctx, pose?.title ? `${pose.title} (${view})` : view, '#ffffff', x + 8, y + 18)
     }
     if (options.title) write(ctx, options.title, '#ffffff', 8, 21)
   } finally {
+    if (options.poses) for (const skeleton of skeletons) skeleton.pose()
     restore()
     if (helpers.length) stage.remove(...helpers)
     if (parent) parent.add(object)
