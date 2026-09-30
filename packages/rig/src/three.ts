@@ -14,7 +14,7 @@
 import * as THREE from 'three'
 import { sliceRegions, type Axis, type SliceResult } from './section.js'
 import type { Skeleton, SkeletonBone } from './skeleton.js'
-import type { Vec3 } from './solve.js'
+import { solveSkinWeights, type SolveInput, type SolveResult, type Vec3 } from './solve.js'
 import { computeVoxelVolume, type VoxelVolume } from './voxelize.js'
 import { computeWeights, meshParts, type SkinOptions, type SkinReport } from './weights.js'
 
@@ -58,6 +58,13 @@ interface Soup {
 }
 
 const volumes = new WeakMap<THREE.Object3D, Map<number, VoxelVolume>>()
+
+type Solve = (input: SolveInput) => SolveResult | Promise<SolveResult>
+let solver: Solve = solveSkinWeights
+/** Swaps the weight solver (the Node entry installs the multi-threaded one). */
+export function useSolver(solve: Solve): void {
+  solver = solve
+}
 
 /**
  * Solid regions where the plane axis=value cuts the scene, largest first, e.g. one region per leg at knee
@@ -109,7 +116,7 @@ export function parts(object: THREE.Object3D): Part[] {
  * as it is now) and removes any previous armature. Adds `root` to `object` if it has no parent. Returns
  * per-bone results and warnings that name the fix.
  */
-export function skin(object: THREE.Object3D, root: THREE.Bone, options: SkinOptions = {}): SkinReport {
+export async function skin(object: THREE.Object3D, root: THREE.Bone, options: SkinOptions = {}): Promise<SkinReport> {
   object.updateMatrixWorld(true)
   if (!root.parent) object.add(root)
   root.updateMatrixWorld(true)
@@ -117,7 +124,7 @@ export function skin(object: THREE.Object3D, root: THREE.Bone, options: SkinOpti
   const bones: THREE.Bone[] = []
   root.traverse((node) => node instanceof THREE.Bone && bones.push(node))
   const skeleton: Skeleton = { bones: bones.map((bone) => toSkeletonBone(bone)) }
-  const { skinIndices, skinWeights, report } = computeWeights(soup.positions, soup.indices, skeleton, options)
+  const { skinIndices, skinWeights, report } = await computeWeights(soup.positions, soup.indices, skeleton, options, solver)
 
   // Remove the old armature first so no stale bone keeps a name the new one uses
   const newBones = new Set(bones)

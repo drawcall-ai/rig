@@ -4,7 +4,7 @@
  */
 
 import { boneLines, resolveSkeleton, type ResolvedBone, type Skeleton } from './skeleton.js'
-import { solveSkinWeights, type BoneLine, type Vec3 } from './solve.js'
+import { solveSkinWeights, type BoneLine, type SolveInput, type SolveResult, type Vec3 } from './solve.js'
 import { computeVoxelVolume, type VoxelVolume } from './voxelize.js'
 
 export interface SkinOptions {
@@ -50,17 +50,18 @@ const DEFAULTS = { resolution: 128, blurIterations: 100, orientationWeight: 2 }
  * unreached vertices and `pieces`, and build the per-bone report with warnings.
  * Weight slots index `skeleton.bones`.
  */
-export function computeWeights(
+export async function computeWeights(
   positions: Float32Array,
   indices: Uint32Array,
   skeleton: Skeleton,
   options: SkinOptions = {},
-): { skinIndices: Uint16Array<ArrayBuffer>; skinWeights: Float32Array<ArrayBuffer>; report: SkinReport } {
+  solve: (input: SolveInput) => SolveResult | Promise<SolveResult> = solveSkinWeights,
+): Promise<{ skinIndices: Uint16Array<ArrayBuffer>; skinWeights: Float32Array<ArrayBuffer>; report: SkinReport }> {
   const { resolution, blurIterations, orientationWeight } = { ...DEFAULTS, ...options }
   const bones = resolveSkeleton(skeleton)
   const lines = boneLines(bones)
   const volume = computeVoxelVolume(positions, indices, { resolution })
-  const solved = solveSkinWeights({ positions, volume, boneLines: lines, blurIterations, orientationWeight })
+  const solved = await solve({ positions, volume, boneLines: lines, blurIterations, orientationWeight })
   // Pieces first: their vertices are settled and must not count as unreached or bleeding
   const pinned = bindPieces(bones, positions, indices, solved.skinIndices, solved.skinWeights)
   const unreachedVertices = bindUnreached(positions, solved.skinIndices, solved.skinWeights, lines)

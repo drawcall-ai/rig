@@ -15,9 +15,12 @@ import { MeshoptDecoder } from 'meshoptimizer'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { readScene, writeSkin, type BakedVertices, type RigJoint } from './gltf.js'
+import { solveParallel } from './parallel.js'
+import { useSolver } from './three.js'
 import type { Vec3 } from './solve.js'
 
 installDOM()
+useSolver(solveParallel)
 
 /** glTF association of a three.js mesh, set by load(): which source node/primitive it came from. */
 interface Source {

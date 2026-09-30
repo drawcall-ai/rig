@@ -64,8 +64,51 @@ const NEAREST_CELL_MAX_RADIUS = 10
 // weighted by manhattan distance: face=4, edge=2, corner=1.
 const BLUR_WEIGHTS = new Float32Array([0, 4 / 56, 2 / 56, 1 / 56])
 
+/** Buffers of the sparse top-4 weights: per inside voxel, up to 4 bones and weights. */
+export interface WeightBuffers {
+  bones: Uint8Array
+  weights: Float32Array
+  count: Uint8Array
+}
+
+/** The voxel grid as the blur pass reads it. */
+export interface BlurGrid {
+  dimensions: readonly [number, number, number]
+  isInsideFlat: Uint8Array
+  insideIndices: Uint32Array
+  flatToLocal: Uint32Array
+}
+
+export interface PreparedSolve {
+  grid: BlurGrid
+  /** Ping-pong weight buffers; a starts as the hard assignment. */
+  a: WeightBuffers
+  b: WeightBuffers
+}
+
+/** Typed-array allocation, so the parallel solver can put buffers in shared memory. */
+export type Allocate = (bytes: number) => ArrayBufferLike
+
 export function solveSkinWeights(input: SolveInput): SolveResult {
-  const { positions, volume, boneLines } = input
+  const prepared = prepareSolve(input)
+  const { a, b } = prepared
+  const numInside = prepared.grid.insideIndices.length
+  let iterations = 0
+  for (let iter = 0; iter < input.blurIterations; iter++) {
+    iterations = iter + 1
+    const maxChange = iter % 2 === 0 ? blurPass(prepared.grid, a, b, 0, numInside) : blurPass(prepared.grid, b, a, 0, numInside)
+    // Early convergence: stop if the max weight change is tiny
+    if (maxChange < 0.001 && iter > 10) break
+  }
+  return finishSolve(input, prepared, iterations % 2 === 0 ? a : b)
+}
+
+/**
+ * Geodesic BFS per bone -> orientation-penalized closest bone per inside voxel,
+ * written into buffer a as the blur's starting point.
+ */
+export function prepareSolve(input: SolveInput, allocate: Allocate = (bytes) => new ArrayBuffer(bytes)): PreparedSolve {
+  const { volume, boneLines } = input
   for (const bone of boneLines) {
     if (!Number.isInteger(bone.boneIndex) || bone.boneIndex < 0 || bone.boneIndex >= MAX_BONES_PER_SOLVE) {
       throw new Error(`boneIndex ${bone.boneIndex} outside [0, ${MAX_BONES_PER_SOLVE})`)
@@ -77,10 +120,9 @@ export function solveSkinWeights(input: SolveInput): SolveResult {
   const [minX, minY, minZ] = volume.min
   const cellSize = volume.cellSize
   const numInside = insideIndices.length
-  const numVertices = positions.length / 3
 
   // grid index -> local (inside-voxel) index
-  const flatToLocal = new Uint32Array(dimX * dimYZ)
+  const flatToLocal = new Uint32Array(allocate(dimX * dimYZ * 4))
   for (let i = 0; i < numInside; i++) flatToLocal[insideIndices[i]] = i
 
   const dist = new Float32Array(numInside)
@@ -227,40 +269,51 @@ export function solveSkinWeights(input: SolveInput): SolveResult {
     }
   }
 
+  const buffers = (): WeightBuffers => ({
+    bones: new Uint8Array(allocate(numInside * MAX_INFLUENCES)),
+    weights: new Float32Array(allocate(numInside * MAX_INFLUENCES * 4)),
+    count: new Uint8Array(allocate(numInside)),
+  })
+  const a = buffers()
+  const b = buffers()
   // Sparse top-4 weights, initialized from the hard assignment
-  const sparseBonesA = new Uint8Array(numInside * MAX_INFLUENCES)
-  const sparseBonesB = new Uint8Array(numInside * MAX_INFLUENCES)
-  const sparseWeightsA = new Float32Array(numInside * MAX_INFLUENCES)
-  const sparseWeightsB = new Float32Array(numInside * MAX_INFLUENCES)
-  const countA = new Uint8Array(numInside)
-  const countB = new Uint8Array(numInside)
   for (let local = 0; local < numInside; local++) {
     if (bestBone[local] >= 0) {
-      sparseBonesA[local * MAX_INFLUENCES] = bestBone[local]
-      sparseWeightsA[local * MAX_INFLUENCES] = 1
-      countA[local] = 1
+      a.bones[local * MAX_INFLUENCES] = bestBone[local]
+      a.weights[local * MAX_INFLUENCES] = 1
+      a.count[local] = 1
     }
   }
+  const inside = new Uint8Array(allocate(isInsideFlat.byteLength))
+  inside.set(isInsideFlat)
+  const indices = new Uint32Array(allocate(insideIndices.byteLength))
+  indices.set(insideIndices)
+  return {
+    grid: { dimensions: volume.dimensions, isInsideFlat: inside, insideIndices: indices, flatToLocal },
+    a,
+    b,
+  }
+}
 
-  // Iterative blur over the 27-cell neighborhood (center at weight 0, exactly
-  // like the reference's precomputed neighbor list), gathered on the fly.
-  const boneSum = new Float32Array(MAX_BONES_PER_SOLVE)
-  const boneSeen = new Uint8Array(MAX_BONES_PER_SOLVE)
-  const seenList = new Uint8Array(MAX_BONES_PER_SOLVE)
+const boneSum = new Float32Array(MAX_BONES_PER_SOLVE)
+const boneSeen = new Uint8Array(MAX_BONES_PER_SOLVE)
+const seenList = new Uint8Array(MAX_BONES_PER_SOLVE)
 
-  let actualIterations = 0
-  for (let iter = 0; iter < input.blurIterations; iter++) {
-    actualIterations = iter + 1
-    const srcInA = iter % 2 === 0
-    const srcBones = srcInA ? sparseBonesA : sparseBonesB
-    const srcWeights = srcInA ? sparseWeightsA : sparseWeightsB
-    const srcCount = srcInA ? countA : countB
-    const dstBones = srcInA ? sparseBonesB : sparseBonesA
-    const dstWeights = srcInA ? sparseWeightsB : sparseWeightsA
-    const dstCount = srcInA ? countB : countA
-    let maxChange = 0
+/**
+ * One blur pass over inside voxels [start, end): each takes the kernel-weighted
+ * average of its 27-cell neighborhood (center at weight 0, exactly like the
+ * reference's precomputed neighbor list) from src, keeps the top 4 in dst.
+ * Reads only src, so ranges can run in parallel. Returns the largest change.
+ */
+export function blurPass(grid: BlurGrid, src: WeightBuffers, dst: WeightBuffers, start: number, end: number): number {
+  const [dimX, dimY, dimZ] = grid.dimensions
+  const dimYZ = dimY * dimZ
+  const { isInsideFlat, insideIndices, flatToLocal } = grid
+  const srcBones = src.bones, srcWeights = src.weights, srcCount = src.count
+  const dstBones = dst.bones, dstWeights = dst.weights, dstCount = dst.count
+  let maxChange = 0
 
-    for (let local = 0; local < numInside; local++) {
+  for (let local = start; local < end; local++) {
       const idx = insideIndices[local]
       const x = (idx / dimYZ) | 0
       const rem = idx - x * dimYZ
@@ -342,14 +395,22 @@ export function solveSkinWeights(input: SolveInput): SolveResult {
       }
     }
 
-    // Early convergence: stop if the max weight change is tiny
-    if (maxChange < 0.001 && iter > 10) break
-  }
+  return maxChange
+}
 
-  const finalInA = actualIterations % 2 === 0
-  const finalBones = finalInA ? sparseBonesA : sparseBonesB
-  const finalWeights = finalInA ? sparseWeightsA : sparseWeightsB
-  const finalCount = finalInA ? countA : countB
+/** Per-vertex top-4 weights from the final blur buffers. */
+export function finishSolve(input: SolveInput, prepared: PreparedSolve, final: WeightBuffers): SolveResult {
+  const { positions, volume } = input
+  const [dimX, dimY, dimZ] = volume.dimensions
+  const dimYZ = dimY * dimZ
+  const { isInsideFlat } = volume
+  const [minX, minY, minZ] = volume.min
+  const cellSize = volume.cellSize
+  const numVertices = positions.length / 3
+  const { flatToLocal } = prepared.grid
+  const finalBones = final.bones
+  const finalWeights = final.weights
+  const finalCount = final.count
 
   // Per-vertex weights (the reference's computeSkinWeights): nearest inside
   // cell, that cell's top-4 bones normalized to sum 1. Unlike the reference's

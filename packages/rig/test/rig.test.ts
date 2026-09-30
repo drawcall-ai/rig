@@ -51,7 +51,7 @@ const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
   const prop = bone('prop', [2, 2, 0], root)
   prop.userData.pieces = [parts(scene).find((p) => p.center[0] > 0)?.index]
 
-  const report = skin(scene, root, { resolution: 64 })
+  const report = await skin(scene, root, { resolution: 64 })
   assert.deepEqual(report.warnings, [])
   const byName = new Map(report.bones.map((b) => [b.name, b]))
   assert.equal(byName.get('root')?.vertices, 0)
@@ -82,7 +82,7 @@ const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
     bone(`front_${side}`, [x, 30, 18], chest).userData.tail = [x, 2, 18]
     bone(`back_${side}`, [x, 30, -36], hips).userData.tail = [x, 2, -36]
   }
-  const report = skin(scene, hips)
+  const report = await skin(scene, hips)
   assert.deepEqual(report.warnings, [])
   const names: string[] = []
   scene.traverse((node) => names.push(node.name))
@@ -123,7 +123,7 @@ const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
     bone(x > 0 ? 'LeftForeArm' : 'RightForeArm', [1.5 * x, 1.75, 0], arm, { tail: [2.3 * x, 1, 1] })
     bone(x > 0 ? 'LeftUpLeg' : 'RightUpLeg', [x, 1.3, 0], hips, { tail: [x, 0, 0] })
   }
-  skin(scene, hips)
+  await skin(scene, hips)
   // Mesh names can change on reload (three.js suffixes names that clashed with the old bones), so compare
   // the set of per-mesh bounding boxes
   const boxes = (object: THREE.Object3D) => {

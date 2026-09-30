@@ -121,7 +121,7 @@ function xray(): void {
 async function skinModel(): Promise<void> {
   const gltf = await new GLTFLoader().parseAsync(modelBytes.slice().buffer, '')
   const start = performance.now()
-  const report = skin(gltf.scene, buildBones(JSON.parse(skeletonInput.value).bones))
+  const report = await skin(gltf.scene, buildBones(JSON.parse(skeletonInput.value).bones))
   const ms = performance.now() - start
   reportOutput.textContent =
     `${report.vertices} vertices skinned in ${ms.toFixed(0)} ms\n\n` +
