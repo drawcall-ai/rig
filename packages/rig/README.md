@@ -39,7 +39,7 @@ await save(scene, 'rigged.glb')
 | `section(scene, axis, values, resolution = 128)` | For each plane `axis = value`: its separate solid regions, largest first, with world `[x, y, z]` `center`, `min` and `max`. A region's center is a joint position, including depth. |
 | `parts(scene)` | Separate mesh pieces, with the `index`, bounds and mesh name. |
 | `await skin(scene, rootBone, { resolution })` | Binds every mesh to the bone tree and replaces each with a `THREE.SkinnedMesh` baked to world space, so the bind pose is the model as loaded. It removes any previous armature. The report lists per-bone `vertices`, `weighted`, `inside`, region and `warnings`. When a bone gets no vertices of its own, the warning suggests where to move its joint. |
-| `render(scene, options)` | Writes one PNG. `views` is any of `+x -x +y -y +z -z` (orthographic, with a labeled world grid) or `persp`. Other options: `poses` (one row per pose, each from the bind pose), `labels`, `weights: 'Bone'` (heatmap, blue 0 to red 1), `focus: 'Bone'` (zoom), `xray`, `bones`. Without `poses`, it shows the current pose (`bone.rotation`). |
+| `render(scene, options)` | Writes one PNG. `views` is any of `+x -x +y -y +z -z` (orthographic, with a labeled world grid) or `persp`. Other options: `poses` (each rendered from the bind pose), `columns` (images per row), `labels`, `weights: 'Bone'` (heatmap, blue 0 to red 1), `focus: 'Bone'` (zoom), `xray`, `bones`. Without `poses`, it shows the current pose (`bone.rotation`). |
 | `save(scene, path)` | Writes the rig, in its bind pose, into the source file: exactly the vertices `skin()` baked. Materials, textures and extensions are kept as they were. |
 
 Skeleton conventions, as in Mixamo and most exporters:

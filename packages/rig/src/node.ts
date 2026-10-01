@@ -167,11 +167,13 @@ export interface RenderOptions {
   /** Caption drawn above the views. */
   title?: string
   /**
-   * A sheet of poses, one row each (all views per row): every pose starts from the bind pose and sets
+   * A sheet of poses (all views of a pose side by side): every pose starts from the bind pose and sets
    * the listed bones' rotations (radians, Euler XYZ); the scene returns to the bind pose afterwards.
    * E.g. a range-of-motion check: [{ title: 'arm up', rotations: { LeftArm: [0, 0, 1.2] } }, ...].
    */
   poses?: { title?: string; rotations: Record<string, [number, number, number]> }[]
+  /** Images per row (default: every view of a pose in one row, or up to 4 views). */
+  columns?: number
 }
 
 let renderer: THREE.WebGLRenderer | undefined
@@ -236,7 +238,7 @@ export async function render(object: THREE.Object3D, options: RenderOptions): Pr
     for (const name of Object.keys(pose.rotations)) if (!byName.has(name)) throw new Error(`pose names unknown bone "${name}"`)
   }
   const cells = poses.flatMap((pose) => views.map((view) => ({ pose, view })))
-  const cols = options.poses ? views.length : Math.min(views.length, 4)
+  const cols = options.columns ?? (options.poses ? views.length : Math.min(views.length, 4))
   const title = options.title ? 30 : 0
   const sheet = create2d(cols * size, Math.ceil(cells.length / cols) * size + title)
   const ctx = sheet.getContext('2d')

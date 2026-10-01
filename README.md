@@ -1,26 +1,28 @@
-# Rig
+# @drawcall/rig
 
-`@drawcall/rig` provides tools for rigging any glTF from a Node script with three.js: measure the mesh, build `THREE.Bone`s, compute skin weights, render checks headlessly, and save. It's designed so AI agents can rig models they have never seen. The usage docs are in [packages/rig](packages/rig/README.md).
+Rig any 3D model by writing a three.js script. The skeleton is plain `THREE.Bone`s. `@drawcall/rig` adds what three.js lacks for rigging:
 
-## Layout
+- measuring the mesh
+- automatic skin weights, with warnings that say what to fix
+- headless check renders
+- saving the rigged glTF
 
-- `packages/rig/` contains `@drawcall/rig`:
-  - `src/three.ts` holds the three.js core: `section`, `parts` and `skin`. It runs in Node and the browser.
-  - `src/node.ts` holds `load`, `render` (headless WebGL 2 via node-webgl) and `save` (glTF Transform, keeping source materials).
-  - `src/weights.ts` turns a skeleton and a triangle soup into weights and a report with warnings.
-  - `src/solve.ts` and `src/voxelize.ts` are the weight kernels. `test/parity.test.ts` checks them against the original CPU implementation vendored in `test/reference/`.
-- `examples/node/` rigs a horse in a script (`pnpm rig`).
-- `examples/browser/` skins the same horse in the browser and plays a gallop (`pnpm dev`).
+It's built so AI agents can rig models they have never seen, of any creature.
 
-## Development
+```ts
+import { bone, load, render, save, section, skin } from '@drawcall/rig'
 
-Requires Node 22+ and pnpm 10+.
-
-```sh
-pnpm install
-pnpm typecheck
-pnpm test       # kernel parity, then the API end to end (glTF-validated)
-pnpm --filter @drawcall/rig bench
+const scene = await load('model.glb')
+section(scene, 'y', [0.5])                    // limb centers at y = 0.5 → joint positions
+const hips = bone('Hips', [0, 0.95, 0])       // bones at world positions
+bone('Spine', [0, 1.1, 0], hips)              // ...ending each chain with an *_End bone
+const report = await skin(scene, hips)        // weights + warnings
+await render(scene, { out: 'check.png', weights: 'Spine' })
+await save(scene, 'rigged.glb')
 ```
 
-Pushing a tag runs the tests and publishes `@drawcall/rig` to npm, versioned by GitVersion.
+How it works: the mesh is voxelized, each voxel takes the bone that is nearest when you walk through the solid (not through the air), the weights are smoothed, and each vertex samples its voxel. Touching parts such as two legs barely share weight.
+
+- **Library:** `npm i @drawcall/rig three`. See [packages/rig](packages/rig/README.md) for the API.
+- **Agent skill:** `npx skills add drawcall-ai/rig`. See [skills/rig](skills/rig/SKILL.md).
+- **Development:** `pnpm install && pnpm test`.
