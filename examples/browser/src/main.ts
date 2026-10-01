@@ -1,18 +1,9 @@
 /**
- * Skins a GLB entirely in the browser and shows the result with three.js: the
- * skeleton as lines plus joint markers, and a gallop when the skeleton is the
- * example horse's. Without the gallop, "Bend every joint" rotates all
- * non-root joints about x to eyeball the weights.
+ * Rigs made by AI agents with @drawcall/rig, one tab per creature. Each tab loads the original
+ * model, rebuilds the agent's skeleton from world-space joints, skins it right here in the browser
+ * and plays a fitting motion.
  *
- * URL parameters (for screenshots):
- *   model=<url>   skin this GLB instead of the horse
- *   skinned=<url> view an already-skinned GLB as is
- *   t=<seconds>   freeze the gallop at this time
- *   view=side|front|top|quarter   camera direction (default side)
- *   xray=1        see-through mesh
- *   bend=<deg>    preset the bend slider (stops the gallop)
- *   skeleton=<url>   skin with this skeleton JSON instead of the example's
- *   animation=<url>  play this keyframe JSON (see keyframes.ts) instead of the gallop
+ * URL parameters (for screenshots): tab=<name>, t=<seconds> (freeze the motion), xray=1, bones=0
  */
 
 import { bone, skin } from '@drawcall/rig/three'
@@ -20,151 +11,161 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { gallop } from './gallop.js'
-import { keyframeClip, type KeyframeAnimation } from './keyframes.js'
+import { flap, swim, walk, type Motion } from './motions.js'
 import horseUrl from '../../node/horse.glb?url'
-import horseSkeleton from '../../node/horse.skeleton.json'
+import horse from '../../node/horse.skeleton.json'
+import fish from './rigs/fish.json'
+import fox from './rigs/fox.json'
+import parrot from './rigs/parrot.json'
+import robot from './rigs/robot.json'
+import soldier from './rigs/soldier.json'
+import stork from './rigs/stork.json'
+
+interface Joint {
+  name: string
+  parent?: string
+  position: number[]
+  tail?: number[]
+  pieces?: number[]
+}
+
+interface Tab {
+  name: string
+  url: string
+  joints: Joint[]
+  /** Builds the looping motion once the rig is bound. */
+  motion: (bones: Map<string, THREE.Bone>, root: THREE.Object3D) => Motion
+}
+
+const THREEJS = 'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf'
+const forward = (x: number, z: number) => new THREE.Vector3(x, 0, z)
+const tabs: Tab[] = [
+  { name: 'Horse', url: horseUrl, joints: horse.bones, motion: (_, root) => clipMotion(root, gallop(root)) },
+  { name: 'Parrot', url: `${THREEJS}/Parrot.glb`, joints: parrot.bones, motion: (b) => flap(b, forward(0, 1)) },
+  { name: 'Stork', url: `${THREEJS}/Stork.glb`, joints: stork.bones, motion: (b) => flap(b, forward(0, 1)) },
+  {
+    name: 'Fish',
+    url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/BarramundiFish/glTF-Binary/BarramundiFish.glb',
+    joints: fish.bones,
+    motion: (b) => swim(b),
+  },
+  { name: 'Soldier', url: `${THREEJS}/Soldier.glb`, joints: soldier.bones, motion: (b) => walk(b, forward(0, -1)) },
+  { name: 'Robot', url: `${THREEJS}/RobotExpressive/RobotExpressive.glb`, joints: robot.bones, motion: (b) => walk(b, forward(0, 1)) },
+  // Your own model, only when examples/browser/public/model.glb exists
+  { name: 'Fox', url: '/model.glb', joints: fox.bones, motion: (b) => walk(b, forward(1, 0)) },
+]
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
-const skeletonInput = element<HTMLTextAreaElement>('skeleton')
-const bendInput = element<HTMLInputElement>('bend')
-const animateInput = element<HTMLInputElement>('animate')
-const xrayInput = element<HTMLInputElement>('xray')
-const reportOutput = element<HTMLPreElement>('report')
 const view = element<HTMLElement>('view')
+const status = element<HTMLElement>('status')
+const play = element<HTMLInputElement>('play')
+const showBones = element<HTMLInputElement>('bones')
+const xray = element<HTMLInputElement>('xray')
+const params = new URLSearchParams(location.search)
+const frozen = params.has('t') ? Number(params.get('t')) : undefined
+xray.checked = params.get('xray') === '1'
+showBones.checked = params.get('bones') !== '0'
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
 renderer.setPixelRatio(devicePixelRatio)
 view.append(renderer.domElement)
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x2a2d31)
-scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2.5))
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2.5), new THREE.DirectionalLight(0xffffff, 1))
 const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 1e5)
 const controls = new OrbitControls(camera, renderer.domElement)
 
-const params = new URLSearchParams(location.search)
-const frozenTime = params.has('t') ? Number(params.get('t')) : undefined
-const VIEWS: Record<string, [number, number, number]> = {
-  side: [1.3, 0.2, 0],
-  front: [0, 0.2, 1.3],
-  top: [0.01, 1.4, 0],
-  quarter: [0.95, 0.45, 0.95],
+let current: { model: THREE.Object3D; helper: THREE.SkeletonHelper; motion: Motion } | undefined
+let loading = 0
+
+async function open(tab: Tab): Promise<void> {
+  const ticket = ++loading
+  for (const button of element<HTMLElement>('tabs').children) button.setAttribute('aria-selected', String(button.textContent === tab.name))
+  status.textContent = `loading ${tab.name}…`
+  const response = await fetch(tab.url)
+  if (!response.ok) throw new Error(`${tab.url}: ${response.status}`)
+  const gltf = await new GLTFLoader().parseAsync(await response.arrayBuffer(), '')
+  if (ticket !== loading) return
+  status.textContent = `skinning ${tab.name}…`
+  await new Promise(requestAnimationFrame)
+
+  const bones = buildBones(tab.joints)
+  const root = bones.get(tab.joints.find((joint) => !joint.parent)?.name ?? '') as THREE.Bone
+  const start = performance.now()
+  const report = await skin(gltf.scene, root, { resolution: 128 })
+  const ms = performance.now() - start
+  if (ticket !== loading) return
+
+  if (current) scene.remove(current.model, current.helper)
+  const helper = new THREE.SkeletonHelper(gltf.scene)
+  scene.add(gltf.scene, helper)
+  current = { model: gltf.scene, helper, motion: tab.motion(bones, gltf.scene) }
+  applyToggles()
+  frame(gltf.scene)
+  // The agents finished most rigs at a higher resolution; the browser skins at 128 to stay quick
+  const summary = `${tab.name}: ${tab.joints.length} bones, ${report.vertices} vertices skinned in ${(ms / 1000).toFixed(1)} s at resolution 128`
+  status.replaceChildren(summary)
+  if (report.warnings.length) {
+    const details = document.createElement('details')
+    details.append(Object.assign(document.createElement('summary'), { textContent: `${report.warnings.length} warnings` }))
+    details.append(report.warnings.join('\n'))
+    status.append(' · ', details)
+  } else {
+    status.append(' · no warnings')
+  }
+  document.body.dataset.ready = tab.name
 }
-const viewDirection = VIEWS[params.get('view') ?? 'side'] ?? VIEWS.side
 
-let model = new THREE.Group()
-let bones: THREE.Bone[] = []
-let mixer: THREE.AnimationMixer | undefined
-let modelBytes = new Uint8Array(await (await fetch(params.get('model') ?? horseUrl)).arrayBuffer())
-const fetchJson = async (url: string): Promise<unknown> => (await fetch(url)).json()
-const skeletonUrl = params.get('skeleton')
-const animationUrl = params.get('animation')
-const animation = animationUrl ? ((await fetchJson(animationUrl)) as KeyframeAnimation) : undefined
-skeletonInput.value = JSON.stringify(skeletonUrl ? await fetchJson(skeletonUrl) : horseSkeleton, null, 2)
-
-async function show(glb: Uint8Array): Promise<void> {
-  showScene((await new GLTFLoader().parseAsync(glb.slice().buffer, '')).scene)
+/** Bones from world-space joints; an old-style tail becomes an end bone. */
+function buildBones(joints: Joint[]): Map<string, THREE.Bone> {
+  const made = new Map<string, THREE.Bone>()
+  const place = (joint: Joint): THREE.Bone => {
+    const existing = made.get(joint.name)
+    if (existing) return existing
+    const parentJoint = joints.find((j) => j.name === joint.parent)
+    const b = bone(joint.name, joint.position as [number, number, number], parentJoint && place(parentJoint))
+    if (joint.pieces) b.userData.pieces = joint.pieces
+    made.set(joint.name, b)
+    if (joint.tail) made.set(`${joint.name}_end`, bone(`${joint.name}_end`, joint.tail as [number, number, number], b))
+    return b
+  }
+  joints.forEach(place)
+  return made
 }
 
-function showScene(loaded: THREE.Group): void {
-  const gltf = { scene: loaded }
-  scene.remove(model)
-  model = new THREE.Group().add(gltf.scene)
-  model.add(new THREE.SkeletonHelper(gltf.scene))
-  scene.add(model)
-  const box = new THREE.Box3().setFromObject(gltf.scene)
+function clipMotion(root: THREE.Object3D, clip: THREE.AnimationClip | null): Motion {
+  if (!clip) return () => {}
+  const mixer = new THREE.AnimationMixer(root)
+  mixer.clipAction(clip).play()
+  return (t) => mixer.setTime(t % clip.duration)
+}
+
+function frame(model: THREE.Object3D): void {
+  const box = new THREE.Box3().setFromObject(model)
   const size = box.getSize(new THREE.Vector3()).length()
   const center = box.getCenter(new THREE.Vector3())
-
-  // Joint markers, drawn on top of the mesh like the skeleton lines
-  const marker = new THREE.SphereGeometry(size * 0.006)
-  const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xffd23f, depthTest: false })
-  bones = []
-  gltf.scene.traverse((object) => {
-    if (!(object instanceof THREE.Bone)) return
-    const sphere = new THREE.Mesh(marker, markerMaterial)
-    sphere.renderOrder = 1
-    object.add(sphere)
-    if (object.parent instanceof THREE.Bone) bones.push(object)
-  })
-  gltf.scene.traverse((object) => object instanceof THREE.SkinnedMesh && object.material instanceof THREE.Material && (object.material.userData.skinned = true))
-  xray()
-
-  const clip = animation ? keyframeClip(gltf.scene, animation) : gallop(gltf.scene)
-  mixer = clip ? new THREE.AnimationMixer(gltf.scene) : undefined
-  if (clip && mixer) mixer.clipAction(clip).play()
-  animateInput.disabled = !clip
-  animate()
-
-  camera.position.copy(center).add(new THREE.Vector3(...viewDirection).multiplyScalar(size))
+  camera.position.copy(center).add(new THREE.Vector3(1, 0.45, 1).normalize().multiplyScalar(size * 1.4))
+  camera.near = size / 100
+  camera.far = size * 100
+  camera.updateProjectionMatrix()
   controls.target.copy(center)
   controls.update()
 }
 
-function animate(): void {
-  const playing = mixer !== undefined && animateInput.checked
-  bendInput.disabled = playing
-  if (playing) return
-  mixer?.setTime(0)
-  const angle = THREE.MathUtils.degToRad(Number(bendInput.value))
-  for (const bone of bones) bone.rotation.set(angle, 0, 0)
-}
-
-function xray(): void {
-  model.traverse((object) => {
-    if (!(object instanceof THREE.Mesh) || !object.material.userData.skinned) return
-    object.material.transparent = xrayInput.checked
-    object.material.opacity = xrayInput.checked ? 0.35 : 1
-    object.material.depthWrite = !xrayInput.checked
+function applyToggles(): void {
+  if (!current) return
+  current.helper.visible = showBones.checked
+  current.model.traverse((node) => {
+    if (!(node instanceof THREE.Mesh)) return
+    for (const material of [node.material].flat()) {
+      material.transparent = xray.checked
+      material.opacity = xray.checked ? 0.35 : 1
+      material.depthWrite = !xray.checked
+    }
   })
 }
-
-async function skinModel(): Promise<void> {
-  const gltf = await new GLTFLoader().parseAsync(modelBytes.slice().buffer, '')
-  const start = performance.now()
-  const report = await skin(gltf.scene, buildBones(JSON.parse(skeletonInput.value).bones))
-  const ms = performance.now() - start
-  reportOutput.textContent =
-    `${report.vertices} vertices skinned in ${ms.toFixed(0)} ms\n\n` +
-    report.bones.map((bone) => `${bone.name}: ${bone.vertices} vertices`).join('\n') +
-    (report.warnings.length ? `\n\n${report.warnings.map((w) => `warning: ${w}`).join('\n')}` : '')
-  showScene(gltf.scene)
-}
-
-interface JointSpec {
-  name: string
-  parent?: string
-  position: [number, number, number]
-  tail?: [number, number, number]
-  deform?: boolean
-}
-
-/** Bones from world-space joint positions (identity rotations); returns the root. */
-function buildBones(specs: JointSpec[]): THREE.Bone {
-  const made = new Map<string, THREE.Bone>()
-  // Parents first; a spec's tail becomes an end bone, the convention skin() uses to end a chain
-  const place = (spec: JointSpec): THREE.Bone => {
-    const existing = made.get(spec.name)
-    if (existing) return existing
-    const parentSpec = specs.find((s) => s.name === spec.parent)
-    const b = bone(spec.name, spec.position, parentSpec && place(parentSpec))
-    if (spec.tail) bone(`${spec.name}_end`, spec.tail, b)
-    made.set(spec.name, b)
-    return b
-  }
-  specs.forEach(place)
-  return made.get(specs.find((spec) => !spec.parent)?.name ?? '') as THREE.Bone
-}
-
-element<HTMLInputElement>('file').addEventListener('change', async (event) => {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (file) modelBytes = new Uint8Array(await file.arrayBuffer())
-})
-element<HTMLButtonElement>('skin').addEventListener('click', () =>
-  skinModel().catch((error: Error) => (reportOutput.textContent = `error: ${error.message}`)),
-)
-bendInput.addEventListener('input', animate)
-animateInput.addEventListener('change', animate)
-xrayInput.addEventListener('change', xray)
+showBones.addEventListener('change', applyToggles)
+xray.addEventListener('change', applyToggles)
 
 function resize(): void {
   renderer.setSize(view.clientWidth, view.clientHeight)
@@ -174,19 +175,23 @@ function resize(): void {
 addEventListener('resize', resize)
 resize()
 const clock = new THREE.Clock()
+let time = 0
 renderer.setAnimationLoop(() => {
   const dt = clock.getDelta()
-  if (mixer && animateInput.checked) {
-    if (frozenTime === undefined) mixer.update(dt)
-    else mixer.setTime(frozenTime)
-  }
+  if (play.checked) time += dt
+  current?.motion(frozen ?? time)
   renderer.render(scene, camera)
 })
 
-bendInput.value = params.get('bend') ?? '0'
-if (params.has('bend')) animateInput.checked = false
-xrayInput.checked = params.get('xray') === '1'
-const skinnedUrl = params.get('skinned')
-if (skinnedUrl) await show(new Uint8Array(await (await fetch(skinnedUrl)).arrayBuffer()))
-else await skinModel()
-document.body.dataset.ready = 'true'
+// The Fox tab needs a local model that isn't part of the repo
+const local = await fetch('/model.glb', { method: 'HEAD' }).then((r) => r.ok && r.headers.get('content-type') !== 'text/html').catch(() => false)
+const available = tabs.filter((tab) => tab.name !== 'Fox' || local)
+for (const tab of available) {
+  const button = document.createElement('button')
+  button.textContent = tab.name
+  button.setAttribute('role', 'tab')
+  button.addEventListener('click', () => void open(tab).catch((error: Error) => (status.textContent = `error: ${error.message}`)))
+  element<HTMLElement>('tabs').append(button)
+}
+const first = available.find((tab) => tab.name.toLowerCase() === params.get('tab')?.toLowerCase()) ?? available[0]
+await open(first).catch((error: Error) => (status.textContent = `error: ${error.message}`))
