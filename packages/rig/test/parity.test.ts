@@ -2,7 +2,7 @@
  * Voxelizer and solver vs the vendored CPU reference on a synthetic capsule,
  * across configs that cover the blur early-exit and the zero-blur path.
  *
- *   pnpm --filter @drawcall/skinning test
+ *   pnpm --filter @drawcall/rig test
  */
 
 import assert from 'node:assert/strict'

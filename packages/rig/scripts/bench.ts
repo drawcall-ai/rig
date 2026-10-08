@@ -3,7 +3,7 @@
  * capsule: the lean solver vs the vendored JS reference (which trades ~3x the
  * memory for precomputed neighbors).
  *
- *   pnpm --filter @drawcall/skinning bench
+ *   pnpm --filter @drawcall/rig bench
  */
 
 import { solveSkinWeights } from '../src/solve.js'

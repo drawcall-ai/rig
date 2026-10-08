@@ -86,7 +86,7 @@ async function open(tab: Tab): Promise<void> {
   if (!response.ok) throw new Error(`${tab.url}: ${response.status}`)
   const gltf = await new GLTFLoader().parseAsync(await response.arrayBuffer(), '')
   if (ticket !== loading) return
-  status.textContent = `skinning ${tab.name}…`
+  status.textContent = `rigging ${tab.name}…`
   await new Promise(requestAnimationFrame)
 
   const bones = buildBones(tab.joints)
