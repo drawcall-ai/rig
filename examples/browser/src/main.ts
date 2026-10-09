@@ -11,11 +11,13 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { gallop } from './gallop.js'
-import { flap, swim, walk, type Motion } from './motions.js'
+import { flap, grip, swim, walk, type Motion } from './motions.js'
 import horseUrl from '../../node/horse.glb?url'
 import horse from '../../node/horse.skeleton.json'
 import fish from './rigs/fish.json'
+import dragon from './rigs/dragon.json'
 import fox from './rigs/fox.json'
+import jeanPhil from './rigs/jean-phil.json'
 import parrot from './rigs/parrot.json'
 import robot from './rigs/robot.json'
 import soldier from './rigs/soldier.json'
@@ -35,12 +37,14 @@ interface Tab {
   joints: Joint[]
   /** Builds the looping motion once the rig is bound. */
   motion: (bones: Map<string, THREE.Bone>, root: THREE.Object3D) => Motion
+  /** Voxels along the longest axis for skin(); thin parts such as fingers need more than the default 128. */
+  resolution?: number
 }
 
 const THREEJS = 'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf'
 const forward = (x: number, z: number) => new THREE.Vector3(x, 0, z)
 const tabs: Tab[] = [
-  { name: 'Horse', url: horseUrl, joints: horse.bones, motion: (_, root) => clipMotion(root, gallop(root)) },
+  { name: 'Horse', url: horseUrl, joints: horse.bones, motion: (_, root) => gallop(root) },
   { name: 'Parrot', url: `${THREEJS}/Parrot.glb`, joints: parrot.bones, motion: (b) => flap(b, forward(0, 1)) },
   { name: 'Stork', url: `${THREEJS}/Stork.glb`, joints: stork.bones, motion: (b) => flap(b, forward(0, 1)) },
   {
@@ -51,8 +55,23 @@ const tabs: Tab[] = [
   },
   { name: 'Soldier', url: `${THREEJS}/Soldier.glb`, joints: soldier.bones, motion: (b) => walk(b, forward(0, -1)) },
   { name: 'Robot', url: `${THREEJS}/RobotExpressive/RobotExpressive.glb`, joints: robot.bones, motion: (b) => walk(b, forward(0, 1)) },
-  // Your own model, only when examples/browser/public/model.glb exists
+  // Local models (examples/browser/public is not part of the repo): a tab shows only when its file exists
   { name: 'Fox', url: '/model.glb', joints: fox.bones, motion: (b) => walk(b, forward(1, 0)) },
+  { name: 'Dragon', url: '/dragon.glb', joints: dragon.bones, resolution: 256, motion: (b) => flap(b, forward(0, 1)) },
+  {
+    name: 'Jean Phil',
+    url: '/jean-phil.glb',
+    joints: jeanPhil.bones,
+    resolution: 384,
+    motion: (b) => {
+      const legs = walk(b, forward(1, 0))
+      const hands = grip(b, forward(1, 0))
+      return (t) => {
+        legs(t)
+        hands(t)
+      }
+    },
+  },
 ]
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
@@ -92,7 +111,8 @@ async function open(tab: Tab): Promise<void> {
   const bones = buildBones(tab.joints)
   const root = bones.get(tab.joints.find((joint) => !joint.parent)?.name ?? '') as THREE.Bone
   const start = performance.now()
-  const report = await skin(gltf.scene, root, { resolution: 128 })
+  const resolution = tab.resolution ?? 128
+  const report = await skin(gltf.scene, root, resolution)
   const ms = performance.now() - start
   if (ticket !== loading) return
 
@@ -102,8 +122,7 @@ async function open(tab: Tab): Promise<void> {
   current = { model: gltf.scene, helper, motion: tab.motion(bones, gltf.scene) }
   applyToggles()
   frame(gltf.scene)
-  // The agents finished most rigs at a higher resolution; the browser skins at 128 to stay quick
-  const summary = `${tab.name}: ${tab.joints.length} bones, ${report.vertices} vertices skinned in ${(ms / 1000).toFixed(1)} s at resolution 128`
+  const summary = `${tab.name}: ${tab.joints.length} bones, ${report.bones.reduce((sum, bone) => sum + bone.vertices, 0)} vertices skinned in ${(ms / 1000).toFixed(1)} s at resolution ${resolution}`
   status.replaceChildren(summary)
   if (report.warnings.length) {
     const details = document.createElement('details')
@@ -131,13 +150,6 @@ function buildBones(joints: Joint[]): Map<string, THREE.Bone> {
   }
   joints.forEach(place)
   return made
-}
-
-function clipMotion(root: THREE.Object3D, clip: THREE.AnimationClip | null): Motion {
-  if (!clip) return () => {}
-  const mixer = new THREE.AnimationMixer(root)
-  mixer.clipAction(clip).play()
-  return (t) => mixer.setTime(t % clip.duration)
 }
 
 function frame(model: THREE.Object3D): void {
@@ -183,9 +195,9 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera)
 })
 
-// The Fox tab needs a local model that isn't part of the repo
-const local = await fetch('/model.glb', { method: 'HEAD' }).then((r) => r.ok && r.headers.get('content-type') !== 'text/html').catch(() => false)
-const available = tabs.filter((tab) => tab.name !== 'Fox' || local)
+// Local tabs need their model in examples/browser/public; the dev server answers a missing file with index.html
+const exists = (url: string) => fetch(url, { method: 'HEAD' }).then((r) => r.ok && r.headers.get('content-type') !== 'text/html').catch(() => false)
+const available = (await Promise.all(tabs.map(async (tab) => (!tab.url.startsWith('/') || (await exists(tab.url)) ? tab : undefined)))).filter((tab) => tab !== undefined)
 for (const tab of available) {
   const button = document.createElement('button')
   button.textContent = tab.name

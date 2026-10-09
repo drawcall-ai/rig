@@ -10,6 +10,7 @@
  */
 
 import * as THREE from 'three'
+import type { Motion } from './motions.js'
 
 const DURATION = 0.6
 const SAMPLES = 60
@@ -135,8 +136,17 @@ function smooth(values: number[], passes: number): number[] {
   return values
 }
 
+/** The gallop, played from its clip; no motion when the model lacks the example skeleton's bones. */
+export function gallop(root: THREE.Object3D): Motion {
+  const clip = gallopClip(root)
+  if (!clip) return () => {}
+  const mixer = new THREE.AnimationMixer(root)
+  mixer.clipAction(clip).play()
+  return (t) => mixer.setTime(t % clip.duration)
+}
+
 /** The gallop clip, or null when the model lacks the example skeleton's bones. */
-export function gallop(root: THREE.Object3D): THREE.AnimationClip | null {
+function gallopClip(root: THREE.Object3D): THREE.AnimationClip | null {
   const legs = Object.entries(LEGS)
   const hips = root.getObjectByName('hips')
   const toes = legs.map(([leg]) => root.getObjectByName(`${leg}_toe`))

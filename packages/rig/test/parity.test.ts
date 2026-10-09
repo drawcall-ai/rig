@@ -6,8 +6,8 @@
  */
 
 import assert from 'node:assert/strict'
-import { solveSkinWeights } from '../src/solve.js'
-import { computeVoxelVolume as voxelize } from '../src/voxelize.js'
+import { solveSkinWeights } from '../src/skin/solve.js'
+import { computeVoxelVolume as voxelize } from '../src/measure/voxelize.js'
 import { makeCapsule, makeCapsuleBones } from './capsule.js'
 import { computeBoneAssignment } from './reference/bone-assignment.js'
 import { computeSkinWeights } from './reference/skin-weights.js'

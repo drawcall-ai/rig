@@ -17,9 +17,8 @@
  * match the reference bit-for-bit up to top-4 tie order.
  */
 
-import type { VoxelVolume } from './voxelize.js'
-
-export type Vec3 = readonly [number, number, number]
+import type { VoxelVolume } from '../measure/voxelize.js'
+import type { Vec3 } from '../vec3.js'
 
 /** A bone as a line segment that attracts weights; several lines may share a boneIndex. */
 export interface BoneLine {
@@ -97,10 +96,14 @@ export function solveSkinWeights(input: SolveInput): SolveResult {
   for (let iter = 0; iter < input.blurIterations; iter++) {
     iterations = iter + 1
     const maxChange = iter % 2 === 0 ? blurPass(prepared.grid, a, b, 0, numInside) : blurPass(prepared.grid, b, a, 0, numInside)
-    // Early convergence: stop if the max weight change is tiny
-    if (maxChange < 0.001 && iter > 10) break
+    if (converged(maxChange, iter)) break
   }
   return finishSolve(input, prepared, iterations % 2 === 0 ? a : b)
+}
+
+/** Early convergence: the blur stops once the largest weight change of a pass is tiny. */
+export function converged(maxChange: number, iter: number): boolean {
+  return maxChange < 0.001 && iter > 10
 }
 
 /**

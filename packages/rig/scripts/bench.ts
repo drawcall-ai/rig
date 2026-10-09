@@ -6,7 +6,7 @@
  *   pnpm --filter @drawcall/rig bench
  */
 
-import { solveSkinWeights } from '../src/solve.js'
+import { solveSkinWeights } from '../src/skin/solve.js'
 import { makeCapsule, makeCapsuleBones } from '../test/capsule.js'
 import { computeBoneAssignment } from '../test/reference/bone-assignment.js'
 import { computeSkinWeights } from '../test/reference/skin-weights.js'

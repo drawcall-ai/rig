@@ -5,3 +5,4 @@ dist
 *.skinned.gltf
 *.check.png
 examples/browser/public
+.env

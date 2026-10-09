@@ -12,14 +12,10 @@
 export interface VoxelVolume {
   /** Bounding box min corner in world space */
   min: [number, number, number]
-  /** Mesh bounding box max corner (the grid itself may extend a little further) */
-  max: [number, number, number]
   /** The size of each cubic cell */
   cellSize: number
   /** The number of cells in each dimension [x, y, z] */
   dimensions: [number, number, number]
-  /** Flat grid: 1 where a triangle touches the cell */
-  isSurfaceFlat: Uint8Array
   /** Flat grid: 1 where the cell is on or inside the surface */
   isInsideFlat: Uint8Array
   /** Flat indices of inside voxels */
@@ -27,17 +23,15 @@ export interface VoxelVolume {
 }
 
 export interface VoxelVolumeOptions {
-  /** Number of cells along the longest axis (default: 256) */
-  resolution?: number
+  /** Number of cells along the longest axis */
+  resolution: number
 }
 
 export function computeVoxelVolume(
   positions: Float32Array,
   indices: Uint32Array,
-  options: VoxelVolumeOptions = {},
+  { resolution }: VoxelVolumeOptions,
 ): VoxelVolume {
-  const { resolution = 256 } = options
-
   const bounds = computeBounds(positions)
   const size = [
     bounds.max[0] - bounds.min[0],
@@ -65,16 +59,33 @@ export function computeVoxelVolume(
 
   return {
     min: bounds.min,
-    max: bounds.max,
     cellSize,
     dimensions,
-    isSurfaceFlat,
     isInsideFlat,
     insideIndices: new Uint32Array(insideList),
   }
 }
 
-export function computeBounds(positions: Float32Array): {
+/** Throws on anything but a positive integer: scripts pass it positionally, and e.g. { resolution: 512 } gives NaN cells. */
+export function checkResolution(resolution: number, example: string): void {
+  if (Number.isInteger(resolution) && resolution > 0) return
+  throw new Error(`resolution must be a positive integer, e.g. ${example}; got ${JSON.stringify(resolution)}`)
+}
+
+/** The [x, y, z] cell containing a world point; may lie outside the grid. */
+export function cellAt(volume: VoxelVolume, point: readonly number[]): [number, number, number] {
+  const cell = (a: number) => Math.floor((point[a] - volume.min[a]) / volume.cellSize)
+  return [cell(0), cell(1), cell(2)]
+}
+
+/** Whether a cell is on or inside the surface; false outside the grid. */
+export function isInside(volume: VoxelVolume, [x, y, z]: readonly number[]): boolean {
+  const [dimX, dimY, dimZ] = volume.dimensions
+  if (x < 0 || y < 0 || z < 0 || x >= dimX || y >= dimY || z >= dimZ) return false
+  return volume.isInsideFlat[x * dimY * dimZ + y * dimZ + z] === 1
+}
+
+function computeBounds(positions: Float32Array): {
   min: [number, number, number]
   max: [number, number, number]
 } {

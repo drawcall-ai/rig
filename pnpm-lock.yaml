@@ -11,9 +11,6 @@ importers:
       '@types/node':
         specifier: ^22.19.3
         version: 22.20.4
-      json:
-        specifier: ^11.0.0
-        version: 11.0.0
       tsx:
         specifier: ^4.19.2
         version: 4.23.15
@@ -495,11 +492,6 @@ packages:
   gltf-validator@2.0.0-dev.3.10:
     resolution: {integrity: sha512-odJ4k0tRkGXiDGn78yDBg+fBbAIvBnXxh3RwAta0emSxGtyagFE8B4xELB1oYe3S5RD8Ci3uZAsZaascH2LAEQ==}
 
-  json@11.0.0:
-    resolution: {integrity: sha512-N/ITv3Yw9Za8cGxuQqSqrq6RHnlaHWZkAFavcfpH/R52522c26EbihMxnY7A1chxfXJ4d+cEFIsyTgfi9GihrA==}
-    engines: {node: '>=0.10.0'}
-    hasBin: true
-
   ktx-parse@1.1.0:
     resolution: {integrity: sha512-mKp3y+FaYgR7mXWAbyyzpa/r1zDWeaunH+INJO4fou3hb45XuNSwar+7llrRyvpMWafxSIi99RNFJ05MHedaJQ==}
 
@@ -933,8 +925,6 @@ snapshots:
     optional: true
 
   gltf-validator@2.0.0-dev.3.10: {}
-
-  json@11.0.0: {}
 
   ktx-parse@1.1.0: {}
 

@@ -6,7 +6,7 @@
 
 import { availableParallelism } from 'node:os'
 import { Worker } from 'node:worker_threads'
-import { blurPass, finishSolve, prepareSolve, type SolveInput, type SolveResult } from './solve.js'
+import { converged, finishSolve, prepareSolve, solveSkinWeights, type SolveInput, type SolveResult } from './solve.js'
 
 let pool: Worker[] = []
 
@@ -26,7 +26,7 @@ function workers(count: number): Worker[] {
  * registering tsx, so it starts from a tiny ES module that does that first.
  */
 function workerEntry(): URL {
-  const worker = new URL(import.meta.url.endsWith('.ts') ? './blur-worker.ts' : './blur-worker.js', import.meta.url)
+  const worker = new URL(import.meta.url.endsWith('.ts') ? './worker.ts' : './worker.js', import.meta.url)
   if (worker.pathname.endsWith('.js')) return worker
   const code = `const { register } = await import(${JSON.stringify(import.meta.resolve('tsx/esm/api'))})
 register()
@@ -51,23 +51,16 @@ function ask(worker: Worker, message: unknown): Promise<number> {
 }
 
 export async function solveParallel(input: SolveInput, threads = availableParallelism()): Promise<SolveResult> {
-  const prepared = prepareSolve(input, (bytes) => new SharedArrayBuffer(bytes))
-  const { grid, a, b } = prepared
-  const numInside = grid.insideIndices.length
+  const numInside = input.volume.insideIndices.length
   // Small grids are faster on one thread than with message round trips
   const count = Math.max(1, Math.min(threads, Math.floor(numInside / 20000)))
-  let iterations = 0
-  if (count === 1) {
-    for (let iter = 0; iter < input.blurIterations; iter++) {
-      iterations = iter + 1
-      const change = iter % 2 === 0 ? blurPass(grid, a, b, 0, numInside) : blurPass(grid, b, a, 0, numInside)
-      if (change < 0.001 && iter > 10) break
-    }
-    return finishSolve(input, prepared, iterations % 2 === 0 ? a : b)
-  }
+  if (count === 1) return solveSkinWeights(input)
 
+  const prepared = prepareSolve(input, (bytes) => new SharedArrayBuffer(bytes))
+  const { grid, a, b } = prepared
   const team = workers(count)
   for (const worker of team) worker.ref()
+  let iterations = 0
   try {
     await Promise.all(team.map((worker) => ask(worker, { type: 'setup', grid, a, b })))
     const size = Math.ceil(numInside / count)
@@ -78,8 +71,7 @@ export async function solveParallel(input: SolveInput, threads = availableParall
           ask(worker, { type: 'pass', fromA: iter % 2 === 0, start: i * size, end: Math.min(numInside, (i + 1) * size) }),
         ),
       )
-      // Early convergence: stop if the max weight change is tiny
-      if (Math.max(...changes) < 0.001 && iter > 10) break
+      if (converged(Math.max(...changes), iter)) break
     }
   } finally {
     for (const worker of team) worker.unref()

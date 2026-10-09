@@ -7,12 +7,12 @@
 
 import { readFileSync } from 'node:fs'
 import * as THREE from 'three'
-import { bone, load, render, save, section, skin } from '@drawcall/rig'
+import { bone, load, render, save, section, skin, type View } from '@drawcall/rig'
 
 const scene = await load('horse.glb')
 
 // Cross-section through the legs: one region per leg, with its world center
-for (const region of section(scene, 'y', [30])[0]?.regions ?? []) console.log('leg at', region.center)
+for (const region of section(scene, [{ y: 30 }])[0].regions) console.log('leg at', region.center)
 
 // The skeleton: plain THREE.Bones, here built from joint world positions
 const skeleton = JSON.parse(readFileSync('horse.skeleton.json', 'utf8')) as { bones: JointSpec[] }
@@ -22,9 +22,9 @@ const report = await skin(scene, root)
 for (const bone of report.bones) console.log(`${bone.name}: ${bone.vertices} vertices`)
 for (const warning of report.warnings) console.warn(`warning: ${warning}`)
 
-// Check a pose, then save (the file keeps the bind pose)
-scene.getObjectByName('frontL_upper')?.rotation.set(-0.8, 0, 0)
-console.log('wrote', await render(scene, { out: 'horse.check.png', views: ['+x', 'persp'] }))
+// Check a pose (each view starts from the bind pose), then save
+const pose = { rotations: { frontL_upper: [-0.8, 0, 0] } } satisfies Omit<View, 'camera'>
+console.log('wrote', await render(scene, { out: 'horse.check.png', views: [[{ ...pose, camera: '+x' }, { ...pose, camera: 'persp' }]] }))
 await save(scene, 'horse.skinned.glb')
 console.log('wrote horse.skinned.glb')
 
@@ -33,7 +33,6 @@ interface JointSpec {
   parent?: string
   position: [number, number, number]
   tail?: [number, number, number]
-  deform?: boolean
 }
 
 /** Bones from world-space joint positions (identity rotations); returns the root. */
