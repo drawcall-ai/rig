@@ -71,7 +71,7 @@ Skeleton conventions, as in Mixamo and most exporters:
 - A leaf bone (for example `LeftFoot_End`) only marks where a chain ends and gets no weights.
 - `bone.userData.pieces = [i]` binds those `pieces()` (props, armor, eyes) 100% to the bone, which then drives only them.
 
-Rendering uses [node-webgl](https://github.com/RenaudRohlinger/node-webgl), which is real WebGL 2 with no browser. In a browser, import the three.js core from `@drawcall/rig/three` (`bone`, `section`, `pieces`, `skin`). `pick` is exported next to `render`, from the Node entry, since its points are read off render images.
+Rendering runs on the CPU in plain JavaScript (depth-buffered, mipmapped textures, diffuse lighting from the scene's lights), so it needs no GPU, driver or browser and draws the same pixels on every OS and architecture. In a browser, import the three.js core from `@drawcall/rig/three` (`bone`, `section`, `pieces`, `skin`). `pick` is exported next to `render`, from the Node entry, since its points are read off render images.
 
 ## How the weights work
 

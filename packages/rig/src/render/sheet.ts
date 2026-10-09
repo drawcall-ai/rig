@@ -1,20 +1,17 @@
 /**
- * Node-only: render a scene to one PNG headlessly (node-webgl: real WebGL 2, no browser), as a grid of
- * views. Each view is complete on its own: camera, pose and what to show.
+ * Node-only: render a scene to one PNG on the CPU (no GPU or browser), as a grid of views. Each view is complete on its own: camera, pose and what to show.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve as resolvePath } from 'node:path'
-import { createCanvas as create2d, loadImage, type SKRSContext2D } from '@napi-rs/canvas'
-import { createCanvas as createGL, installDOM, type Canvas } from '@onirenaud/node-webgl'
+import { createCanvas, type SKRSContext2D } from '@napi-rs/canvas'
 import * as THREE from 'three'
 import { gather } from '../measure/soup.js'
 import { frame, grid, sphere } from './camera.js'
 import { boneColor, isAncestorOrSelf, isolate, paint, skeletonBones } from './display.js'
 import { pose, snapshot } from './pose.js'
+import { rasterize } from './raster.js'
 import { resolve, type Shot, type View } from './view.js'
-
-installDOM()
 
 export interface RenderOptions {
   /** PNG path to write. */
@@ -43,8 +40,6 @@ const BACKGROUND = '#2a2d31'
 const JOINT = '#ffd23f'
 const FONT = '13px monospace'
 
-let gl: { canvas: Canvas; renderer: THREE.WebGLRenderer } | undefined
-
 /**
  * Renders a grid of views into one PNG and returns its path. The scene is left as it was. An object with a
  * parent renders as if it had none: the parent's transform is ignored.
@@ -59,7 +54,7 @@ export async function render(object: THREE.Object3D, options: RenderOptions): Pr
   const palette = skeletonBones(object)
   const shots = rows.map((row) => row.map((view) => resolve(view, bones, palette)))
 
-  const png = create2d(Math.max(...rows.map((row) => row.length)) * size, rows.length * size)
+  const png = createCanvas(Math.max(...rows.map((row) => row.length)) * size, rows.length * size)
   const sheet = png.getContext('2d')
   sheet.fillStyle = BACKGROUND
   sheet.fillRect(0, 0, png.width, png.height)
@@ -77,7 +72,7 @@ export async function render(object: THREE.Object3D, options: RenderOptions): Pr
   const index = parent?.children.indexOf(object) ?? -1
   scene.add(object)
   try {
-    for (const [r, row] of shots.entries()) for (const [c, shot] of row.entries()) await draw(stage, shot, c * size, r * size)
+    for (const [r, row] of shots.entries()) for (const [c, shot] of row.entries()) draw(stage, shot, c * size, r * size)
   } finally {
     restore()
     if (parent) {
@@ -95,7 +90,7 @@ export async function render(object: THREE.Object3D, options: RenderOptions): Pr
 }
 
 /** Poses the scene for one shot, draws it into the sheet at (x, y) and puts the display back. */
-async function draw(stage: Stage, shot: Shot, x: number, y: number): Promise<void> {
+function draw(stage: Stage, shot: Shot, x: number, y: number): void {
   const { scene, object, bones, markers, sheet, size } = stage
   const { view } = shot
   pose(object, view)
@@ -144,9 +139,9 @@ async function draw(stage: Stage, shot: Shot, x: number, y: number): Promise<voi
         ruler.lines.geometry.dispose()
       })
     }
-    const { renderer, canvas } = context(size)
-    renderer.render(scene, camera)
-    sheet.drawImage(await loadImage(canvas.toBuffer('image/png')), x, y)
+    const pixels = sheet.createImageData(size, size)
+    pixels.data.set(rasterize(scene, camera, size))
+    sheet.putImageData(pixels, x, y)
 
     for (const label of ruler?.labels ?? []) write(sheet, label.text, '#9aa4b1', x + label.x, y + label.y)
     for (const bone of view.bones === 'names' ? shown : []) {
@@ -162,17 +157,6 @@ async function draw(stage: Stage, shot: Shot, x: number, y: number): Promise<voi
   } finally {
     for (const fn of undo.reverse()) fn()
   }
-}
-
-/** The WebGL canvas and renderer, kept across renders of the same size. */
-function context(size: number): { canvas: Canvas; renderer: THREE.WebGLRenderer } {
-  if (gl?.canvas.width === size) return gl
-  gl?.renderer.dispose()
-  const canvas = createGL(size, size)
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true })
-  renderer.setSize(size, size, false)
-  gl = { canvas, renderer }
-  return gl
 }
 
 /** "title (camera, weights LeftArm, isolate LeftHand, no bones)": what makes this view differ from a plain one. */

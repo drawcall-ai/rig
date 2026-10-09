@@ -1,0 +1,61 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+jobs:
+  # Rendering runs on the CPU, so the whole suite (renders included) must pass on every OS and architecture
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter "./packages/*" typecheck
+
+      - name: Test
+        run: pnpm --filter "./packages/*" test
+
+  # musl: Alpine containers, as agent sandboxes often are
+  test-alpine:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    container: node:24-alpine
+    steps:
+      # JavaScript actions (actions/checkout) can't run in Alpine containers on arm64 runners
+      - name: Checkout code
+        run: |
+          apk add --no-cache git
+          git clone --filter=blob:none "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" .
+          git checkout "$GITHUB_SHA"
+
+      - name: Install dependencies
+        run: corepack enable && pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm --filter "./packages/*" test

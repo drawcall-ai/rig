@@ -70,9 +70,6 @@ importers:
       '@napi-rs/canvas':
         specifier: ^1.0.9
         version: 1.0.9
-      '@onirenaud/node-webgl':
-        specifier: ^0.2.0
-        version: 0.2.0
       draco3dgltf:
         specifier: ^1.5.7
         version: 1.5.7
@@ -339,10 +336,6 @@ packages:
     resolution: {integrity: sha512-QviPdJImDi/jMAvBfqaw+19BndMd/sizXVW3NnpMd3VJGz++QXkOHcP9kWR/smHG0hNjHeyuHFyrx/5lD0oNcQ==}
     engines: {node: '>= 10'}
 
-  '@onirenaud/node-webgl@0.2.0':
-    resolution: {integrity: sha512-M0LTqbN4OL+C5m4rthm1XJWJbtgFHxMep8RtzM/zSCjhg71lT4+rg63QT7Z0O93Cx/ti9ywHhuQWEUtn450ieg==}
-    engines: {node: '>=20'}
-
   '@oxc-project/types@0.151.0':
     resolution: {integrity: sha512-J1yXrIlNDZVzE3ada310xeAw7nH8yCAyLPuUIsjKatFPmfn5bS1oW+cM+QsGOtVWd5nhSpbwZWx/rue+r5Z+PA==}
 
@@ -576,10 +569,6 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
-  node-gyp-build@4.8.4:
-    resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
-    hasBin: true
-
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
@@ -804,10 +793,6 @@ snapshots:
       '@napi-rs/canvas-win32-arm64-msvc': 1.0.9
       '@napi-rs/canvas-win32-x64-msvc': 1.0.9
 
-  '@onirenaud/node-webgl@0.2.0':
-    dependencies:
-      node-gyp-build: 4.8.4
-
   '@oxc-project/types@0.151.0': {}
 
   '@rolldown/binding-android-arm-eabi@1.2.11':
@@ -982,8 +967,6 @@ snapshots:
   meshoptimizer@1.3.0: {}
 
   nanoid@3.3.19: {}
-
-  node-gyp-build@4.8.4: {}
 
   picocolors@1.1.1: {}
 

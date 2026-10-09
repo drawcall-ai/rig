@@ -7,8 +7,7 @@ on:
 
 jobs:
   publish:
-    # macOS arm64: @onirenaud/node-webgl (headless render tests) ships no Linux build
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
