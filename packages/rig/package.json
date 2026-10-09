@@ -3,6 +3,15 @@
   "version": "0.0.0",
   "description": "Tools for AI agents rigging any glTF with three.js in Node scripts: measure the mesh, build bones, compute skin weights, render checks, save.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drawcall-ai/rig.git",
+    "directory": "packages/rig"
+  },
+  "bugs": {
+    "url": "https://github.com/drawcall-ai/rig/issues"
+  },
+  "homepage": "https://github.com/drawcall-ai/rig#readme",
   "type": "module",
   "main": "src/index.ts",
   "exports": {
@@ -25,7 +34,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "skills"
   ],
   "engines": {
     "node": ">=20"

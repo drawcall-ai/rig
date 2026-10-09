@@ -25,5 +25,5 @@ await save(scene, 'rigged.glb')
 How it works: the mesh is voxelized, each voxel takes the bone that is nearest when you walk through the solid (not through the air), the weights are smoothed, and each vertex samples its voxel. Touching limbs such as two legs barely share weight.
 
 - **Library:** `npm i @drawcall/rig three`. See [packages/rig](packages/rig/README.md) for the API.
-- **Agent skill:** `npx skills add drawcall-ai/rig`. See [skills/rig](skills/rig/SKILL.md).
+- **Agent skill:** `npx skills add drawcall-ai/rig`. See [skills/rig](packages/rig/skills/rig/SKILL.md). The skill also ships inside the `@drawcall/rig` npm package at `skills/rig/SKILL.md`, so [skills-npm](https://github.com/antfu/skills-npm) links it automatically from `node_modules`, at the version you have installed.
 - **Development:** `pnpm install && pnpm test`.

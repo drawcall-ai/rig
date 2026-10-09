@@ -1,6 +1,7 @@
 {
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.18.0",
   "scripts": {
     "build": "pnpm --filter @drawcall/rig build",
     "typecheck": "pnpm -r typecheck",

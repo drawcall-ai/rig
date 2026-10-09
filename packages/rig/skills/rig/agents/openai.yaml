@@ -1,0 +1,4 @@
+interface:
+  display_name: "rig"
+  short_description: "Rig any glTF model with three.js scripts"
+  default_prompt: "Use $rig to build a skeleton for this model, compute skin weights, check the deformation, and save the rigged glTF."
