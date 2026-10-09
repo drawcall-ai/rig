@@ -51,6 +51,7 @@ jobs:
       - name: Checkout code
         run: |
           apk add --no-cache git
+          git config --global --add safe.directory "$PWD"
           git clone --filter=blob:none "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" .
           git checkout "$GITHUB_SHA"
 
