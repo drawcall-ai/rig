@@ -67,6 +67,8 @@ try {
   first.dispose()
   assert.equal(disposals, disposed, 'disposal is idempotent')
   second.dispose()
+  const absolute = await new RigLoader().setPath('missing-directory/').loadAsync({ url: join(directory, 'model.gltf'), skeleton, resolution: 16 })
+  absolute.dispose()
 
   await assert.rejects(loader.loadAsync({ url: 'missing.glb', skeleton, resolution: 16 }), /ENOENT/)
   assert.equal(errors, 1)

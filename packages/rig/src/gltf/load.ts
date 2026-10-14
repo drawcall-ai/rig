@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { isAbsolute, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createCanvas, loadImage } from '@napi-rs/canvas'
 import { DataTexture, LoaderUtils, type LoadingManager } from 'three'
@@ -8,7 +8,7 @@ import type { GLTF, GLTFLoader, GLTFParser } from 'three/addons/loaders/GLTFLoad
 /** Read local and remote glTF resources without installing browser globals. */
 export async function readGLTF(loader: GLTFLoader, input: string | URL, onProgress?: (event: ProgressEvent) => void): Promise<GLTF> {
   const inputURL = String(input)
-  const resolved = /^[a-z][a-z\d+.-]*:/i.test(inputURL) ? inputURL : LoaderUtils.resolveURL(inputURL, loader.path)
+  const resolved = isAbsolute(inputURL) || /^[a-z][a-z\d+.-]*:/i.test(inputURL) ? inputURL : LoaderUtils.resolveURL(inputURL, loader.path)
   const url = loader.manager.resolveURL(resolved)
   const source = canonicalURL(url)
   const data = await bytes(source, loader.requestHeader, loader.withCredentials)
@@ -19,7 +19,7 @@ export async function readGLTF(loader: GLTFLoader, input: string | URL, onProgre
 }
 
 function canonicalURL(input: string): URL {
-  return /^[a-z][a-z\d+.-]*:/i.test(input) ? new URL(input) : pathToFileURL(resolve(input))
+  return !isAbsolute(input) && /^[a-z][a-z\d+.-]*:/i.test(input) ? new URL(input) : pathToFileURL(resolve(input))
 }
 
 async function bytes(url: URL, headers: Record<string, string>, credentials: boolean): Promise<ArrayBuffer> {
