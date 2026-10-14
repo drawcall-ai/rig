@@ -25,6 +25,6 @@ console.log(rig.report)
 Install `@drawcall/rig @drawcall/glts three`. Use the packaged [rig skill](skills/rig/SKILL.md) for the measurement, skeleton, and deformation workflow, and the [glts skill](https://github.com/drawcall-ai/glts/blob/main/packages/glts/skills/glts/SKILL.md) for rendering and export. Skills ship with their packages under `skills/`.
 
 ```sh
-npx @drawcall/glts render character.glts -o preview.png
-npx @drawcall/glts export character.glts -o character.rigged.glb
+npx drawcall glts render character.glts -o preview.png
+npx drawcall glts export character.glts -o character.rigged.glb
 ```

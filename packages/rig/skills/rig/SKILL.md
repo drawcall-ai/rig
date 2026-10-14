@@ -88,8 +88,8 @@ Import `pose` and `weights` from `@drawcall/rig`. To isolate a joint's influence
 Check each articulated region by rotating its own joint about 45° and confirming the intended geometry moves. Include small controls such as wrists, fingers, feet, and wing rays; a full-body pose can hide an ineffective joint. Use ownership paint to find competing regions, then a selected-bone heatmap to inspect the suspect influence. Judge the actual deformation in original-material, mesh-only views: overlays and paint can hide collapse or dragging. Also inspect a natural pose from several sides. Targets can avoid guessing bend signs.
 
 ```sh
-npx @drawcall/glts render character.glts -o check.png --views '[[{"camera":"+x"},{"camera":"+z"},{"camera":"persp"}]]'
-npx @drawcall/glts export character.glts -o character.rigged.glb
+npx drawcall glts render character.glts -o check.png --views '[[{"camera":"+x"},{"camera":"+z"},{"camera":"persp"}]]'
+npx drawcall glts export character.glts -o character.rigged.glb
 ```
 
 Inspect the images, adjust the source skeleton, and rebuild from the original model. When delivering a GLB, reload it and check its bind pose, original materials, and a representative joint bend; success in the source preview does not validate the exported rig. Deliver the `.glts` with its referenced files and disclose remaining deformation limits. Follow the glts skill for export behavior and animation clips.
