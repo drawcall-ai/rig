@@ -4,5 +4,8 @@ dist
 *.skinned.glb
 *.skinned.gltf
 *.check.png
-examples/browser/public
+examples/browser/public/*
+!examples/browser/public/rigs/
+examples/browser/public/rigs/*
+!examples/browser/public/rigs/*.glts
 .env

@@ -1,13 +1,14 @@
 /** What lies under points of an orthographic view, measured on the voxel solid along the camera's line of sight. */
 
 import * as THREE from 'three'
-import type { View } from '../render/view.js'
 import type { Vec3 } from '../vec3.js'
 import { AXES } from './section.js'
 import { gather } from './soup.js'
 import { cellAt, checkResolution, computeVoxelVolume, isInside } from './voxelize.js'
 
 /** A point of an orthographic view's grid, by the two axes it labels: { x, z } for ±y, { z, y } for ±x, { x, y } for ±z. */
+export type AxisCamera = '+x' | '-x' | '+y' | '-y' | '+z' | '-z'
+
 export type Point = { x: number; z: number } | { x: number; y: number } | { y: number; z: number }
 
 /** One stretch of solid along the line of sight, world space. */
@@ -29,11 +30,10 @@ export interface Span {
  * Measures the scene in its current pose, as section() and skin() do; the view takes only `camera`. Spans are
  * measured in whole voxels; resolution = voxels along the longest axis (default 128), as in section() and skin().
  */
-export function pick(object: THREE.Object3D, view: Pick<View, 'camera'>, points: Point[], resolution = 128): Span[][] {
+export function pick(object: THREE.Object3D, view: { camera: AxisCamera }, points: Point[], resolution = 128): Span[][] {
   const extra = Object.keys(view).filter((key) => key !== 'camera')
   if (extra.length) throw new Error(`pick: the view takes only camera, got ${extra.join(', ')}`)
   const { camera } = view
-  if (camera === 'persp') throw new Error("pick: camera 'persp' has no grid to read a point from; use one of +x, -x, +y, -y, +z, -z")
   if (!['+x', '-x', '+y', '-y', '+z', '-z'].includes(camera)) throw new Error(`pick: unknown camera ${JSON.stringify(camera)}; use one of +x, -x, +y, -y, +z, -z`)
   const along = 'xyz'.indexOf(camera[1])
   const [u, v] = [0, 1, 2].filter((a) => a !== along)

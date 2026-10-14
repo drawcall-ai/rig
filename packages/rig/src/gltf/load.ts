@@ -1,74 +1,109 @@
-/** Node-only: load a glTF as a three.js scene that remembers its source for save(). */
-
-import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { createCanvas, loadImage } from '@napi-rs/canvas'
-import { MeshoptDecoder } from 'meshoptimizer'
-import * as THREE from 'three'
-import { GLTFLoader, type GLTFParser } from 'three/addons/loaders/GLTFLoader.js'
+import { DataTexture, LoaderUtils, type LoadingManager } from 'three'
+import type { GLTF, GLTFLoader, GLTFParser } from 'three/addons/loaders/GLTFLoader.js'
 
-/** glTF association of a three.js mesh, set by load() in userData.gltf: which source node/primitive it came from. */
-export interface Source {
-  node: number
-  primitive: number
+/** Read local and remote glTF resources without installing browser globals. */
+export async function readGLTF(loader: GLTFLoader, input: string | URL, onProgress?: (event: ProgressEvent) => void): Promise<GLTF> {
+  const inputURL = String(input)
+  const resolved = /^[a-z][a-z\d+.-]*:/i.test(inputURL) ? inputURL : LoaderUtils.resolveURL(inputURL, loader.path)
+  const url = loader.manager.resolveURL(resolved)
+  const source = canonicalURL(url)
+  const data = await bytes(source, loader.requestHeader, loader.withCredentials)
+  onProgress?.(new ReadProgress(data.byteLength))
+  const base = loader.resourcePath ? canonicalURL(loader.resourcePath).href : new URL('.', source).href
+  loader.register((parser) => resources(parser, loader.withCredentials))
+  return loader.parseAsync(data, base)
 }
 
-export function sourceOf(mesh: THREE.Mesh): Source | undefined {
-  const value: unknown = mesh.userData.gltf
-  if (typeof value !== 'object' || value === null || !('node' in value) || !('primitive' in value)) return undefined
-  const { node, primitive } = value
-  return typeof node === 'number' && typeof primitive === 'number' ? { node, primitive } : undefined
+function canonicalURL(input: string): URL {
+  return /^[a-z][a-z\d+.-]*:/i.test(input) ? new URL(input) : pathToFileURL(resolve(input))
 }
 
-/** Loads a .glb/.gltf as a three.js scene (the gltf.scene). Remembers the file for save(). */
-export async function load(path: string): Promise<THREE.Group> {
-  const file = resolve(path)
-  const bytes = readFileSync(file)
-  await MeshoptDecoder.ready
-  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).register(decodeImages)
-  const gltf = await loader.parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), `${dirname(file)}/`)
-  const associations = gltf.parser.associations
-  gltf.scene.traverse((object) => {
-    if (!(object instanceof THREE.Mesh)) return
-    const primitive = associations.get(object)?.primitives ?? 0
-    let owner: THREE.Object3D | null = object
-    while (owner && associations.get(owner)?.nodes === undefined) owner = owner.parent
-    const node = owner ? associations.get(owner)?.nodes : undefined
-    if (node !== undefined) object.userData.gltf = { node, primitive } satisfies Source
-  })
-  gltf.scene.userData.source = file
-  gltf.scene.updateMatrixWorld(true)
-  return gltf.scene
-}
-
-/**
- * A GLTFLoader plugin that decodes images in Node: three.js decodes them with browser APIs (Image, Blob URLs).
- * Each image becomes a DataTexture of its RGBA pixels, which render() samples.
- */
-function decodeImages(parser: GLTFParser): { name: string } {
-  const cache = new Map<number, Promise<THREE.Texture>>()
-  parser.loadImageSource = (index) => {
-    const cached = cache.get(index)
-    if (cached) return cached.then((texture) => texture.clone())
-    const promise = decode(parser, index)
-    cache.set(index, promise)
-    return promise
+async function bytes(url: URL, headers: Record<string, string>, credentials: boolean): Promise<ArrayBuffer> {
+  if (url.protocol === 'file:') {
+    const data = await readFile(url)
+    return Uint8Array.from(data).buffer
   }
-  return { name: 'rig_decode_images' }
+  const response = await fetch(url, { headers, credentials: credentials ? 'include' : 'same-origin' })
+  if (!response.ok) throw new Error(`RigLoader: ${response.status} ${response.statusText} loading ${url}`)
+  return response.arrayBuffer()
 }
 
-async function decode(parser: GLTFParser, index: number): Promise<THREE.Texture> {
-  const source: { uri?: string; bufferView?: number; mimeType?: string } = parser.json.images[index]
-  let bytes: Buffer
-  if (source.bufferView !== undefined) bytes = Buffer.from(await parser.getDependency('bufferView', source.bufferView))
-  else if (source.uri?.startsWith('data:')) bytes = Buffer.from(source.uri.slice(source.uri.indexOf(',') + 1), 'base64')
-  else if (source.uri) bytes = readFileSync(resolve(parser.options.path, decodeURIComponent(source.uri)))
-  else throw new Error(`load: image ${index} has neither a uri nor a bufferView`)
-  const image = await loadImage(bytes)
-  const context = createCanvas(image.width, image.height).getContext('2d')
-  context.drawImage(image, 0, 0)
-  const texture = new THREE.DataTexture(context.getImageData(0, 0, image.width, image.height).data, image.width, image.height)
-  texture.userData.mimeType = source.mimeType
+function record(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('RigLoader: invalid glTF resource definition')
+  return Object.fromEntries(Object.entries(value))
+}
+
+function resource(parser: GLTFParser, kind: string, index: number): Record<string, unknown> {
+  const json: unknown = parser.json
+  const list = record(json)[kind]
+  if (!Array.isArray(list)) throw new Error(`RigLoader: missing glTF ${kind}`)
+  return record(list[index])
+}
+
+function resources(parser: GLTFParser, credentials: boolean): { name: string } {
+  const original = parser.loadBuffer.bind(parser)
+  parser.loadBuffer = (index) => {
+    const uri = resource(parser, 'buffers', index).uri
+    if (uri === undefined) return original(index)
+    if (typeof uri !== 'string') throw new Error('RigLoader: buffer uri must be a string')
+    return readResource(parser, uri, credentials)
+  }
+  const cache = new Map<number, Promise<DataTexture>>()
+  parser.loadImageSource = (index) => {
+    let pending = cache.get(index)
+    if (!pending) {
+      pending = image(parser, index, credentials)
+      cache.set(index, pending)
+    }
+    return pending.then((texture) => texture.clone())
+  }
+  return { name: 'rig_node_resources' }
+}
+
+async function readResource(parser: GLTFParser, uri: string, credentials: boolean): Promise<ArrayBuffer> {
+  const manager: LoadingManager = parser.options.manager
+  const url = manager.resolveURL(new URL(uri, parser.options.path).href)
+  manager.itemStart(url)
+  try {
+    return await bytes(canonicalURL(url), parser.options.requestHeader, credentials)
+  } catch (error) {
+    manager.itemError(url)
+    throw error
+  } finally {
+    manager.itemEnd(url)
+  }
+}
+
+async function image(parser: GLTFParser, index: number, credentials: boolean): Promise<DataTexture> {
+  const source = resource(parser, 'images', index)
+  let data: ArrayBuffer
+  if (typeof source.bufferView === 'number') {
+    const dependency: unknown = await parser.getDependency('bufferView', source.bufferView)
+    if (!(dependency instanceof ArrayBuffer)) throw new Error(`RigLoader: image ${index} bufferView is not binary data`)
+    data = dependency
+  } else if (typeof source.uri === 'string') data = await readResource(parser, source.uri, credentials)
+  else throw new Error(`RigLoader: image ${index} has neither a uri nor a bufferView`)
+  const decoded = await loadImage(Buffer.from(data))
+  const context = createCanvas(decoded.width, decoded.height).getContext('2d')
+  context.drawImage(decoded, 0, 0)
+  const texture = new DataTexture(context.getImageData(0, 0, decoded.width, decoded.height).data, decoded.width, decoded.height)
+  if (typeof source.mimeType === 'string') texture.userData.mimeType = source.mimeType
   texture.needsUpdate = true
   return texture
+}
+
+class ReadProgress extends Event implements ProgressEvent {
+  readonly lengthComputable = true
+  readonly loaded: number
+  readonly total: number
+
+  constructor(size: number) {
+    super('progress')
+    this.loaded = size
+    this.total = size
+  }
 }

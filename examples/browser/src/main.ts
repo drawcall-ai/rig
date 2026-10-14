@@ -1,68 +1,36 @@
-/**
- * Rigs made by AI agents with @drawcall/rig, one tab per creature. Each tab loads the original
- * model, rebuilds the agent's skeleton from world-space joints, skins it right here in the browser
- * and plays a fitting motion.
- *
- * URL parameters (for screenshots): tab=<name>, t=<seconds> (freeze the motion), xray=1, bones=0
+/** Loads rigged .glts assets and plays a motion for each creature.
+ * URL parameters: tab=<name>, t=<seconds>, xray=1, bones=0, weights=ownership|<bone name>.
  */
 
-import { bone, skin } from '@drawcall/rig/three'
+import { GLTSLoader, type GLTSScene } from '@drawcall/glts'
+import * as rig from '@drawcall/rig'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { gallop } from './gallop.js'
 import { flap, grip, swim, walk, type Motion } from './motions.js'
-import horseUrl from '../../node/horse.glb?url'
-import horse from '../../node/horse.skeleton.json'
-import fish from './rigs/fish.json'
-import dragon from './rigs/dragon.json'
-import fox from './rigs/fox.json'
-import jeanPhil from './rigs/jean-phil.json'
-import parrot from './rigs/parrot.json'
-import robot from './rigs/robot.json'
-import soldier from './rigs/soldier.json'
-import stork from './rigs/stork.json'
-
-interface Joint {
-  name: string
-  parent?: string
-  position: number[]
-  tail?: number[]
-  pieces?: number[]
-}
+import horseUrl from '../../node/horse.glts?url'
+import horseModelUrl from '../../node/horse.glb?url'
 
 interface Tab {
   name: string
   url: string
-  joints: Joint[]
-  /** Builds the looping motion once the rig is bound. */
+  /** Optional local model; hide the tab when the file is absent. */
+  model?: string
   motion: (bones: Map<string, THREE.Bone>, root: THREE.Object3D) => Motion
-  /** Voxels along the longest axis for skin(); thin parts such as fingers need more than the default 128. */
-  resolution?: number
 }
 
-const THREEJS = 'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf'
 const forward = (x: number, z: number) => new THREE.Vector3(x, 0, z)
 const tabs: Tab[] = [
-  { name: 'Horse', url: horseUrl, joints: horse.bones, motion: (_, root) => gallop(root) },
-  { name: 'Parrot', url: `${THREEJS}/Parrot.glb`, joints: parrot.bones, motion: (b) => flap(b, forward(0, 1)) },
-  { name: 'Stork', url: `${THREEJS}/Stork.glb`, joints: stork.bones, motion: (b) => flap(b, forward(0, 1)) },
+  { name: 'Horse', url: horseUrl, motion: (_, root) => gallop(root) },
+  { name: 'Parrot', url: '/rigs/parrot.glts', motion: (b) => flap(b, forward(0, 1)) },
+  { name: 'Stork', url: '/rigs/stork.glts', motion: (b) => flap(b, forward(0, 1)) },
+  { name: 'Fish', url: '/rigs/fish.glts', motion: (b) => swim(b) },
+  { name: 'Soldier', url: '/rigs/soldier.glts', motion: (b) => walk(b, forward(0, -1)) },
+  { name: 'Robot', url: '/rigs/robot.glts', motion: (b) => walk(b, forward(0, 1)) },
+  { name: 'Fox', url: '/rigs/fox.glts', model: '/model.glb', motion: (b) => walk(b, forward(1, 0)) },
+  { name: 'Dragon', url: '/rigs/dragon.glts', model: '/dragon.glb', motion: (b) => flap(b, forward(0, 1)) },
   {
-    name: 'Fish',
-    url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/BarramundiFish/glTF-Binary/BarramundiFish.glb',
-    joints: fish.bones,
-    motion: (b) => swim(b),
-  },
-  { name: 'Soldier', url: `${THREEJS}/Soldier.glb`, joints: soldier.bones, motion: (b) => walk(b, forward(0, -1)) },
-  { name: 'Robot', url: `${THREEJS}/RobotExpressive/RobotExpressive.glb`, joints: robot.bones, motion: (b) => walk(b, forward(0, 1)) },
-  // Local models (examples/browser/public is not part of the repo): a tab shows only when its file exists
-  { name: 'Fox', url: '/model.glb', joints: fox.bones, motion: (b) => walk(b, forward(1, 0)) },
-  { name: 'Dragon', url: '/dragon.glb', joints: dragon.bones, resolution: 256, motion: (b) => flap(b, forward(0, 1)) },
-  {
-    name: 'Jean Phil',
-    url: '/jean-phil.glb',
-    joints: jeanPhil.bones,
-    resolution: 384,
+    name: 'Jean Phil', url: '/rigs/jean-phil.glts', model: '/jean-phil.glb',
     motion: (b) => {
       const legs = walk(b, forward(1, 0))
       const hands = grip(b, forward(1, 0))
@@ -74,12 +42,33 @@ const tabs: Tab[] = [
   },
 ]
 
-const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
-const view = element<HTMLElement>('view')
-const status = element<HTMLElement>('status')
-const play = element<HTMLInputElement>('play')
-const showBones = element<HTMLInputElement>('bones')
-const xray = element<HTMLInputElement>('xray')
+function element(id: string): HTMLElement {
+  const found = document.getElementById(id)
+  if (!found) throw new Error(`Missing #${id}`)
+  return found
+}
+
+function checkbox(id: string): HTMLInputElement {
+  const found = element(id)
+  if (!(found instanceof HTMLInputElement)) throw new Error(`#${id} is not an input`)
+  return found
+}
+
+function select(id: string): HTMLSelectElement {
+  const found = element(id)
+  if (!(found instanceof HTMLSelectElement)) throw new Error(`#${id} is not a select`)
+  return found
+}
+
+const manager = new THREE.LoadingManager()
+manager.setURLModifier((url) => new URL(url, location.href).pathname.endsWith('/horse.glb') ? horseModelUrl : url)
+const loader = new GLTSLoader(manager, { isPreview: true, modules: { '@drawcall/rig': rig } })
+const view = element('view')
+const status = element('status')
+const play = checkbox('play')
+const showBones = checkbox('bones')
+const xray = checkbox('xray')
+const paint = select('weights')
 const params = new URLSearchParams(location.search)
 const frozen = params.has('t') ? Number(params.get('t')) : undefined
 xray.checked = params.get('xray') === '1'
@@ -90,66 +79,70 @@ renderer.setPixelRatio(devicePixelRatio)
 view.append(renderer.domElement)
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x2a2d31)
-scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2.5), new THREE.DirectionalLight(0xffffff, 1))
 const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 1e5)
 const controls = new OrbitControls(camera, renderer.domElement)
 
-let current: { model: THREE.Object3D; helper: THREE.SkeletonHelper; motion: Motion } | undefined
+let current: {
+  model: GLTSScene
+  helpers: THREE.SkeletonHelper[]
+  helper?: THREE.SkeletonHelper
+  restoreWeights?: () => void
+  motion: Motion
+} | undefined
+const materials = new WeakMap<THREE.Material, { transparent: boolean; opacity: number; depthWrite: boolean }>()
 let loading = 0
 
 async function open(tab: Tab): Promise<void> {
   const ticket = ++loading
-  for (const button of element<HTMLElement>('tabs').children) button.setAttribute('aria-selected', String(button.textContent === tab.name))
+  for (const button of element('tabs').children) button.setAttribute('aria-selected', String(button.textContent === tab.name))
   status.textContent = `loading ${tab.name}…`
-  const response = await fetch(tab.url)
-  if (!response.ok) throw new Error(`${tab.url}: ${response.status}`)
-  const gltf = await new GLTFLoader().parseAsync(await response.arrayBuffer(), '')
-  if (ticket !== loading) return
-  status.textContent = `rigging ${tab.name}…`
-  await new Promise(requestAnimationFrame)
-
-  const bones = buildBones(tab.joints)
-  const root = bones.get(tab.joints.find((joint) => !joint.parent)?.name ?? '') as THREE.Bone
   const start = performance.now()
-  const resolution = tab.resolution ?? 128
-  const report = await skin(gltf.scene, root, resolution)
-  const ms = performance.now() - start
-  if (ticket !== loading) return
-
-  if (current) scene.remove(current.model, current.helper)
-  const helper = new THREE.SkeletonHelper(gltf.scene)
-  scene.add(gltf.scene, helper)
-  current = { model: gltf.scene, helper, motion: tab.motion(bones, gltf.scene) }
-  applyToggles()
-  frame(gltf.scene)
-  const summary = `${tab.name}: ${tab.joints.length} bones, ${report.bones.reduce((sum, bone) => sum + bone.vertices, 0)} vertices skinned in ${(ms / 1000).toFixed(1)} s at resolution ${resolution}`
-  status.replaceChildren(summary)
-  if (report.warnings.length) {
-    const details = document.createElement('details')
-    details.append(Object.assign(document.createElement('summary'), { textContent: `${report.warnings.length} warnings` }))
-    details.append(report.warnings.join('\n'))
-    status.append(' · ', details)
-  } else {
-    status.append(' · no warnings')
+  const model = await loader.loadAsync(tab.url)
+  if (ticket !== loading) {
+    model.dispose()
+    return
   }
+  const bones = new Map<string, THREE.Bone>()
+  model.traverse((node) => {
+    if (node instanceof THREE.Bone) bones.set(node.name, node)
+  })
+  if (current) {
+    current.restoreWeights?.()
+    scene.remove(current.model)
+    if (current.helper) {
+      scene.remove(current.helper)
+      current.helper.dispose()
+    }
+    current.model.dispose()
+  }
+  const helpers: THREE.SkeletonHelper[] = []
+  model.traverse((node) => {
+    if (node instanceof THREE.SkeletonHelper) helpers.push(node)
+  })
+  const helper = helpers.length ? undefined : new THREE.SkeletonHelper(model)
+  if (helper) {
+    helpers.push(helper)
+    scene.add(helper)
+  }
+  for (const overlay of helpers) {
+    overlay.renderOrder = 1
+    for (const material of [overlay.material].flat()) material.depthTest = false
+  }
+  scene.add(model)
+  current = { model, helpers, helper, motion: tab.motion(bones, model) }
+  paint.replaceChildren(new Option('Original materials', 'original'), new Option('Bone ownership', 'ownership'))
+  const group = document.createElement('optgroup')
+  group.label = 'Bone heatmap (blue → red)'
+  for (const name of bones.keys()) group.append(new Option(name, `bone:${name}`))
+  paint.append(group)
+  paint.disabled = bones.size === 0
+  const requested = params.get('weights')
+  if (requested === 'ownership') paint.value = requested
+  else if (requested && bones.has(requested)) paint.value = `bone:${requested}`
+  applyWeights()
+  frame(model)
+  status.textContent = `${tab.name}: ${bones.size} bones, loaded and rigged in ${((performance.now() - start) / 1000).toFixed(1)} s`
   document.body.dataset.ready = tab.name
-}
-
-/** Bones from world-space joints; an old-style tail becomes an end bone. */
-function buildBones(joints: Joint[]): Map<string, THREE.Bone> {
-  const made = new Map<string, THREE.Bone>()
-  const place = (joint: Joint): THREE.Bone => {
-    const existing = made.get(joint.name)
-    if (existing) return existing
-    const parentJoint = joints.find((j) => j.name === joint.parent)
-    const b = bone(joint.name, joint.position as [number, number, number], parentJoint && place(parentJoint))
-    if (joint.pieces) b.userData.pieces = joint.pieces
-    made.set(joint.name, b)
-    if (joint.tail) made.set(`${joint.name}_end`, bone(`${joint.name}_end`, joint.tail as [number, number, number], b))
-    return b
-  }
-  joints.forEach(place)
-  return made
 }
 
 function frame(model: THREE.Object3D): void {
@@ -166,16 +159,29 @@ function frame(model: THREE.Object3D): void {
 
 function applyToggles(): void {
   if (!current) return
-  current.helper.visible = showBones.checked
+  for (const helper of current.helpers) helper.visible = showBones.checked
   current.model.traverse((node) => {
     if (!(node instanceof THREE.Mesh)) return
     for (const material of [node.material].flat()) {
-      material.transparent = xray.checked
-      material.opacity = xray.checked ? 0.35 : 1
-      material.depthWrite = !xray.checked
+      let original = materials.get(material)
+      if (!original) {
+        original = { transparent: material.transparent, opacity: material.opacity, depthWrite: material.depthWrite }
+        materials.set(material, original)
+      }
+      material.transparent = xray.checked || original.transparent
+      material.opacity = xray.checked ? original.opacity * 0.35 : original.opacity
+      material.depthWrite = xray.checked ? false : original.depthWrite
+      material.needsUpdate = true
     }
   })
 }
+function applyWeights(): void {
+  if (!current) return
+  current.restoreWeights?.()
+  current.restoreWeights = paint.value === 'original' ? undefined : rig.weights(current.model, paint.value === 'ownership' ? undefined : paint.value.slice(5))
+  applyToggles()
+}
+paint.addEventListener('change', applyWeights)
 showBones.addEventListener('change', applyToggles)
 xray.addEventListener('change', applyToggles)
 
@@ -191,19 +197,21 @@ let time = 0
 renderer.setAnimationLoop(() => {
   const dt = clock.getDelta()
   if (play.checked) time += dt
+  current?.model.update(dt)
   current?.motion(frozen ?? time)
   renderer.render(scene, camera)
 })
 
 // Local tabs need their model in examples/browser/public; the dev server answers a missing file with index.html
 const exists = (url: string) => fetch(url, { method: 'HEAD' }).then((r) => r.ok && r.headers.get('content-type') !== 'text/html').catch(() => false)
-const available = (await Promise.all(tabs.map(async (tab) => (!tab.url.startsWith('/') || (await exists(tab.url)) ? tab : undefined)))).filter((tab) => tab !== undefined)
+const available = (await Promise.all(tabs.map(async (tab) => (!tab.model || (await exists(tab.model)) ? tab : undefined)))).filter((tab) => tab !== undefined)
 for (const tab of available) {
   const button = document.createElement('button')
   button.textContent = tab.name
   button.setAttribute('role', 'tab')
   button.addEventListener('click', () => void open(tab).catch((error: Error) => (status.textContent = `error: ${error.message}`)))
-  element<HTMLElement>('tabs').append(button)
+  element('tabs').append(button)
 }
 const first = available.find((tab) => tab.name.toLowerCase() === params.get('tab')?.toLowerCase()) ?? available[0]
+if (!first) throw new Error('No rigs available')
 await open(first).catch((error: Error) => (status.textContent = `error: ${error.message}`))

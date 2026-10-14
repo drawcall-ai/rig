@@ -1,5 +1,5 @@
 /**
- * Skeleton input: a flat list of named bones in world space, linked by parent
+ * Skeleton input: a flat list of named bones at absolute positions, linked by parent
  * name. A bone with a child bone and no pieces deforms: its segment from its
  * joint to its first child's joint attracts skin weights.
  */
@@ -11,11 +11,13 @@ export interface SkeletonBone {
   name: string
   /** Name of the parent bone; omit for a root. */
   parent?: string
-  /** Joint (pivot) position in world space. */
+  /** Absolute joint position, including children. RigLoader interprets it in model coordinates. */
   position: Vec3
   /**
-   * Rigid attachments: indices of separate mesh pieces (see meshPieces) bound 100% to this bone,
+   * Rigid attachments: indices of separate mesh pieces (see pieces()) bound 100% to this bone,
    * e.g. glasses, a helmet, armor plates, a prop. A bone with pieces drives only them.
+   * An empty array makes a non-deforming grouping joint. Assign each piece to only one bone.
+   * A fully rigid skeleton needs assignments covering every model piece; it needs no end bones.
    */
   pieces?: number[]
 }
@@ -69,7 +71,9 @@ export function resolveSkeleton(bones: SkeletonBone[]): ResolvedBone[] {
     tail: children[i].length ? bones[children[i][0]].position : bone.position,
     deform: children[i].length > 0 && bone.pieces === undefined,
   }))
-  if (!resolved.some((bone) => bone.deform)) throw new Error('skeleton has no deforming bone (end bones and bones with pieces do not count)')
+  if (!resolved.some((bone) => bone.deform || bone.pieces?.length)) {
+    throw new Error('skeleton has no deforming bone or rigid piece assignments; add a child joint to a deforming bone or assign model pieces to bones')
+  }
   return resolved
 }
 
@@ -84,5 +88,5 @@ export function boneLength(bone: ResolvedBone): number {
 }
 
 function assertVec3(value: Vec3, what: string): void {
-  if (!value.every(Number.isFinite)) throw new Error(`${what} must be finite [x, y, z] numbers, got ${JSON.stringify(value)}`)
+  if (value.length !== 3 || !value.every(Number.isFinite)) throw new Error(`${what} must be finite [x, y, z] numbers, got ${JSON.stringify(value)}`)
 }

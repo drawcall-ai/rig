@@ -1,26 +1,9 @@
-/**
- * The public API end to end: skin() on an in-memory three.js scene (world
- * baking, instancing, mirroring, pieces), and load -> section/pieces -> skin ->
- * render -> save on the already-rigged, textured Fox sample, with the saved
- * file checked by the Khronos glTF validator and loaded back; and the three.js
- * RobotExpressive sample (its own armature, hands posed through non-identity
- * mesh nodes), whose saved file must match the in-memory rig vertex for vertex.
- *
- *   pnpm --filter @drawcall/rig test
- */
-
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { validateBytes } from 'gltf-validator'
 import * as THREE from 'three'
-import { bone, load, pick, pieces, render, save, section, skin, type View } from '../src/index.js'
-import { pose } from '../src/render/pose.js'
+import { bone, pick, pieces, section, skin } from '../src/index.js'
+import { pose } from '../src/pose.js'
+import { weights } from '../src/weights.js'
 import { makeCapsule } from './capsule.js'
-
-const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
 
 // Capsules y in [-1, 1], instanced twice under a transformed parent, one mirrored
 {
@@ -64,6 +47,44 @@ const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
   assert.ok(skinned.every((mesh) => mesh.parent === scene && mesh.skeleton === skinned[0].skeleton))
   const after = new THREE.Box3().setFromObject(scene)
   assert.ok(after.min.distanceTo(before.min) < 1e-4 && after.max.distanceTo(before.max) < 1e-4, 'bind pose = input pose')
+  const originalColors = new THREE.BufferAttribute(new Float32Array(capsule.positions.length).fill(0.25), 3)
+  skinned[0].geometry.setAttribute('color', originalColors)
+  const materials = skinned.map((mesh) => mesh.material)
+  let originalDisposals = 0
+  material.addEventListener('dispose', () => originalDisposals++)
+  const restore = weights(scene)
+  let diagnosticDisposals = 0
+  for (const mesh of skinned) {
+    assert.ok(mesh.material instanceof THREE.MeshBasicMaterial)
+    assert.equal(mesh.material.vertexColors, true)
+    mesh.material.addEventListener('dispose', () => diagnosticDisposals++)
+  }
+  assert.notEqual(skinned[0].geometry.getAttribute('color'), originalColors)
+  restore()
+  restore()
+  assert.equal(diagnosticDisposals, 2, 'diagnostic materials disposed exactly once')
+  assert.equal(originalDisposals, 0, 'source material remains owned by the model')
+  skinned.forEach((mesh, index) => assert.equal(mesh.material, materials[index]))
+  assert.equal(skinned[0].geometry.getAttribute('color'), originalColors)
+  assert.equal(skinned[1].geometry.getAttribute('color'), undefined)
+  assert.throws(() => weights(scene, 'missing'), /weights names unknown bone/)
+  const sharedGeometry = skinned[0].geometry
+  const clones = [new THREE.SkinnedMesh(sharedGeometry, material), new THREE.SkinnedMesh(sharedGeometry, material)]
+  for (const clone of clones) clone.bind(skinned[0].skeleton)
+  const group = new THREE.Group().add(...clones)
+  const restoreShared = weights(group)
+  let geometryDisposals = 0
+  for (const clone of clones) {
+    assert.notEqual(clone.geometry, sharedGeometry, 'diagnostics own their geometry')
+    clone.geometry.addEventListener('dispose', () => geometryDisposals++)
+  }
+  assert.equal(sharedGeometry.getAttribute('color'), originalColors, 'shared source colors are untouched')
+  restoreShared()
+  restoreShared()
+  assert.equal(geometryDisposals, 2, 'diagnostic geometries disposed exactly once')
+  assert.ok(clones.every((clone) => clone.geometry === sharedGeometry))
+  assert.equal(sharedGeometry.getAttribute('color'), originalColors, 'shared colors restored')
+
   console.log('capsule scene ok')
 }
 
@@ -82,9 +103,9 @@ const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
   assert.deepEqual(above, { axis: 'y', value: 5, regions: [] }, 'a plane above the tube misses: no regions, the requested value')
   const [, across] = section(tube(), [{ y: 2 }, { x: 0 }], 64)
   assert.ok(across.axis === 'x' && across.regions.length === 1, 'planes may mix axes')
-  assert.throws(() => section(tube(), [{ y: 2 }, { x: 0, y: 2 } as never]), /section: plane 1 must name exactly one axis, e\.g\. \{ y: 0\.5 \}/)
-  assert.throws(() => section(tube(), [null as never]), /section: plane 0 must name exactly one axis/)
-  assert.throws(() => section(tube(), { y: 2 } as never), /section takes a non-empty list of planes/)
+  assert.throws(() => Reflect.apply(section, undefined, [tube(), [{ y: 2 }, { x: 0, y: 2 }]]), /section: plane 1 must name exactly one axis, e\.g\. \{ y: 0\.5 \}/)
+  assert.throws(() => Reflect.apply(section, undefined, [tube(), [null]]), /section: plane 0 must name exactly one axis/)
+  assert.throws(() => Reflect.apply(section, undefined, [tube(), { y: 2 }]), /section takes a non-empty list of planes/)
   assert.throws(() => section(tube(), []), /section takes a non-empty list of planes/)
 
   const rig = (midY: number) => {
@@ -105,7 +126,7 @@ const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
     `grouped warning: ${coarse.warnings}`,
   )
 
-  await assert.rejects(skin(tube(), rig(1.1), { resolution: 64 } as never), /resolution must be a positive integer, e.g. skin\(scene, root, 256\)/)
+  await assert.rejects(Reflect.apply(skin, undefined, [tube(), rig(1.1), { resolution: 64 }]), /resolution must be a positive integer, e.g. skin\(scene, root, 256\)/)
   assert.throws(() => section(tube(), [{ y: 2 }], 0.5), /resolution must be a positive integer/)
 
   // Removing an old armature keeps what hangs off it: a marker, and the new root attached under an old bone
@@ -124,16 +145,7 @@ const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
   assert.ok(marker.parent === rerigged && newRoot.parent === rerigged, 'its other children kept')
   assert.ok(marker.getWorldPosition(new THREE.Vector3()).distanceTo(new THREE.Vector3(0, 2, 0)) < 1e-9, 'in place')
 
-  // Not skinned yet: no bind pose, so views show the scene as it is, and posing or weights throw
-  const plain = await render(tube(), { out: join(dir, 'tube.png'), views: [[{ camera: '+x' }]] })
-  assert.ok(statSync(plain).size > 5_000, 'an unskinned scene renders as it is')
-  const holder = new THREE.Group()
-  const first = tube()
-  holder.add(first, new THREE.Group())
-  await render(first, { out: join(dir, 'x.png'), views: [[{ camera: '+x' }]] })
-  assert.equal(holder.children[0], first, 'render puts the object back at its index')
-  await assert.rejects(render(tube(), { out: join(dir, 'x.png'), views: [[{ camera: '+x', rotations: {} }]] }), /posing needs a skinned scene/)
-  await assert.rejects(render(tube(), { out: join(dir, 'x.png'), views: [[{ camera: '+x', weights: true }]] }), /weights needs a skinned scene/)
+  assert.throws(() => pose(tube(), { rotations: {} }), /posing needs a skinned scene/)
 
   // Rotations apply on top of a bone's bind rotation (here turned about its own segment), under a scaled
   // armature node: the bind pose puts every joint back where it was bound
@@ -156,6 +168,14 @@ const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
   pose(turned, { rotations: { top: [0.3, 0, 0] } })
   const expected = bind.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0.3, 0, 0)))
   assert.ok(top.quaternion.angleTo(expected) < 1e-6, 'rotation in the bind frame')
+  const target = new THREE.Vector3(2, 2, 3)
+  pose(turned, { rotations: { root: [0, 0.3, 0] }, targets: { top: target.toArray() } })
+  const end = turned.getObjectByName('end')
+  assert.ok(end)
+  const joint = top.getWorldPosition(new THREE.Vector3())
+  const direction = end.getWorldPosition(new THREE.Vector3()).sub(joint)
+  assert.ok(direction.angleTo(target.clone().sub(joint)) < 1e-6, 'target applied after parent rotation')
+  assert.throws(() => pose(turned, { rotations: { missing: [0, 0, 0] } }), /pose names unknown bone/)
   console.log('tube ok: suggested y', suggested)
 }
 
@@ -183,13 +203,13 @@ const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
   assert.equal(back.length, 1, 'from -x: the lower box only')
   near(back[0].enter, [-0.5, 0.7, 0.2], 'enters it at its -x face')
   assert.throws(() => pick(scene, { camera: '+y' }, [{ x: 0, z: 0 }, { x: 0, y: 0 }]), /pick: point 1: camera \+y looks along y; give x and z/)
-  assert.throws(() => pick(scene, { camera: '-z' }, [{ x: 0 } as never]), /point 0: camera -z looks along z; give x and y/)
-  assert.throws(() => pick(scene, { camera: '+y' }, { x: 0, z: 0 } as never), /pick takes a non-empty list of points, e\.g\. pick\(scene, \{ camera: '\+y' \}, \[\{ x: 0\.1, z: 0\.2 \}\]\)/)
+  assert.throws(() => Reflect.apply(pick, undefined, [scene, { camera: '-z' }, [{ x: 0 }]]), /point 0: camera -z looks along z; give x and y/)
+  assert.throws(() => Reflect.apply(pick, undefined, [scene, { camera: '+y' }, { x: 0, z: 0 }]), /pick takes a non-empty list of points, e\.g\. pick\(scene, \{ camera: '\+y' \}, \[\{ x: 0\.1, z: 0\.2 \}\]\)/)
   assert.throws(() => pick(scene, { camera: '+y' }, []), /pick takes a non-empty list of points/)
-  assert.throws(() => pick(scene, { camera: '+x' }, [null as never]), /pick: point 0: camera \+x looks along x; give y and z, e\.g\. \{ y: 0\.1, z: 0\.2 \}; got null/)
-  assert.throws(() => pick(scene, { camera: 'persp' }, [{ x: 0, y: 0 }]), /'persp' has no grid/)
-  assert.throws(() => pick(scene, { camera: '+y', isolate: 'any' } as never, [{ x: 0, z: 0 }]), /the view takes only camera, got isolate/)
-  assert.throws(() => pick(scene, { camera: '+y', rotations: {} } as never, [{ x: 0, z: 0 }]), /the view takes only camera, got rotations/)
+  assert.throws(() => Reflect.apply(pick, undefined, [scene, { camera: '+x' }, [null]]), /pick: point 0: camera \+x looks along x; give y and z, e\.g\. \{ y: 0\.1, z: 0\.2 \}; got null/)
+  assert.throws(() => Reflect.apply(pick, undefined, [scene, { camera: 'persp' }, [{ x: 0, y: 0 }]]), /unknown camera "persp"/)
+  assert.throws(() => Reflect.apply(pick, undefined, [scene, { camera: '+y', isolate: 'any' }, [{ x: 0, z: 0 }]]), /the view takes only camera, got isolate/)
+  assert.throws(() => Reflect.apply(pick, undefined, [scene, { camera: '+y', rotations: {} }, [{ x: 0, z: 0 }]]), /the view takes only camera, got rotations/)
   assert.throws(() => pick(scene, { camera: '-z' }, [{ x: 0, y: 0 }], 0), /resolution must be a positive integer, e\.g\. pick\(scene, \{ camera: '-z' \}, \[\{ x: 0\.1, y: 0\.2 \}\], 256\)/)
 
   // A sweep of many points gathers the scene once, not once per point: the scene is walked as often for 500
@@ -218,137 +238,56 @@ const dir = mkdtempSync(join(tmpdir(), 'rig-test-'))
   console.log('pick ok')
 }
 
-// Fox: already skinned + textured + animated
-{
-  const fixture = fileURLToPath(new URL('./fixtures/fox.glb', import.meta.url))
-  const scene = await load(fixture)
-  const [legs] = section(scene, [{ y: 15 }])
-  assert.equal(legs.regions.length, 5, 'four legs and the tail cross y=15')
 
-  const hips = bone('hips', [0, 40, -25])
-  const chest = bone('chest', [0, 40, 15], hips)
-  bone('head_end', [0, 60, 60], bone('head', [0, 60, 35], chest))
-  bone('tail_end', [0, 15, -80], bone('tail', [0, 35, -45], hips))
-  for (const [side, x] of [['L', 6], ['R', -6]] as const) {
-    bone(`front_${side}_end`, [x, 2, 18], bone(`front_${side}`, [x, 30, 18], chest))
-    bone(`back_${side}_end`, [x, 2, -36], bone(`back_${side}`, [x, 30, -36], hips))
-  }
-  const report = await skin(scene, hips)
+// An articulated rigid model needs only piece assignments, not artificial deforming segments or end bones.
+{
+  const model = () => new THREE.Group().add(
+    new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial()),
+    new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1).translate(3, 0, 0), new THREE.MeshBasicMaterial()),
+  )
+  const scene = model()
+  const root = bone('body', [0, 0, 0])
+  root.userData.pieces = [0]
+  const arm = bone('arm', [2, 0, 0], root)
+  arm.userData.pieces = [1]
+  // This grid would be impossible to allocate: explicit rigid assignments bypass voxelization.
+  const report = await skin(scene, root, 1_000_000)
   assert.deepEqual(report.warnings, [])
-  const names: string[] = []
-  scene.traverse((node) => names.push(node.name))
-  assert.equal(names.filter((n) => n === 'hips').length, 1, 'new bone names are unique')
-
-  // Every view starts from the bind pose: a view without a pose renders the same with the scene moved or not.
-  // Afterwards each bone's full local transform is as it was.
-  const plain = [[{ camera: 'persp', weights: 'front_L', bones: 'names' }]] satisfies View[][]
-  const bind = readFileSync(await render(scene, { out: join(dir, 'bind.png'), views: plain }))
-  const front = scene.getObjectByName('front_L')
-  const hipsBone = scene.getObjectByName('hips')
-  assert.ok(front && hipsBone)
-  front.rotation.set(0, 0, 1)
-  hipsBone.position.x += 5
-  hipsBone.scale.setScalar(1.5)
-  const moved = await render(scene, { out: join(dir, 'fox.png'), views: plain })
-  assert.ok(statSync(moved).size > 10_000, 'rendered a PNG')
-  assert.ok(readFileSync(moved).equals(bind), 'a view without a pose renders the bind pose')
-  assert.equal(front.rotation.z, 1, 'rotation restored')
-  assert.ok(Math.abs(hipsBone.position.x - 5) < 1e-9 && hipsBone.scale.x === 1.5, 'position and scale restored')
-  hipsBone.position.x -= 5
-  hipsBone.scale.setScalar(1)
-  const owners = await render(scene, { out: join(dir, 'owners.png'), views: [[{ camera: '+x', weights: true, isolate: 'chest' }]] })
-  assert.ok(statSync(owners).size > 5_000, 'rendered the isolated ownership map')
-  const sheet = await render(scene, {
-    out: join(dir, 'rom.png'),
-    views: [[{ camera: '+x', title: 'rest' }], [{ camera: '+x', title: 'head down', rotations: { head: [0.8, 0, 0] }, focus: 'head' }]],
-  })
-  assert.ok(statSync(sheet).size > 10_000)
-  assert.ok(Math.abs(scene.getObjectByName('head')?.rotation.x ?? 1) < 1e-6, 'head as before')
-  await assert.rejects(render(scene, { out: join(dir, 'x.png'), xray: true } as never), /unknown option "xray"/)
-  await assert.rejects(render(scene, { out: join(dir, 'x.png'), views: [[{ camera: '+x', pose: {} }]] } as never), /unknown key "pose"/)
-  await assert.rejects(render(scene, { out: join(dir, 'x.png'), views: [[{ camera: 'side' }]] } as never), /unknown camera "side"/)
-  await assert.rejects(render(scene, { out: join(dir, 'x.png'), views: [[{ camera: '+x', focus: 'nose' }]] }), /focus names unknown bone "nose"/)
-
-  // A pick measures the current pose: both front legs at rest, the raised one forward once posed
-  const [across] = pick(scene, { camera: '+x' }, [{ y: 15, z: 18 }])
-  assert.equal(across.length, 2, `both front legs: ${JSON.stringify(across)}`)
-  assert.ok(across[0].center[0] > 0 && across[1].center[0] < 0, 'front_L (+x) first, seen from +x')
-  assert.equal(pick(scene, { camera: '+x' }, [{ y: 28, z: 35 }])[0].length, 0, 'nothing in front of the chest at rest')
-  pose(scene, { targets: { front_L: [6, 30, 60] } })
-  scene.updateMatrixWorld(true)
-  const [left, forward] = pick(scene, { camera: '+x' }, [{ y: 15, z: 18 }, { y: 28, z: 35 }])
-  assert.ok(left.length === 1 && left[0].center[0] < 0, `the raised leg left its place, front_R stays: ${JSON.stringify(left)}`)
-  assert.ok(forward.length === 1 && forward[0].center[0] > 0, `the raised leg lies forward: ${JSON.stringify(forward)}`)
-  pose(scene, {})
-  scene.updateMatrixWorld(true)
-
-  // A target turns the bone so its segment points at the world point, after its parents moved
-  const at = (name: string) => scene.getObjectByName(name)?.getWorldPosition(new THREE.Vector3()) ?? new THREE.Vector3(NaN)
-  const target = new THREE.Vector3(30, 40, 40)
-  pose(scene, { rotations: { chest: [0, 0.3, 0] }, targets: { front_L: target.toArray() } })
-  scene.updateMatrixWorld(true)
-  const pointing = at('front_L_end').sub(at('front_L')).normalize()
-  assert.ok(pointing.angleTo(target.clone().sub(at('front_L'))) < 1e-4, 'front_L points at its target after its parent turned')
-  assert.throws(() => pose(scene, { rotations: { nose: [0, 0, 0] } }), /pose names unknown bone "nose"/)
-  // Saved from a pose: the file holds the bind pose
-  front.rotation.set(0, 0, 1)
-  const out = join(dir, 'fox.glb')
-  await save(scene, out)
-
-  const bytes = readFileSync(out)
-  const { issues } = await validateBytes(new Uint8Array(bytes))
-  assert.equal(issues.numErrors, 0, JSON.stringify(issues.messages.filter((m) => m.severity === 0).slice(0, 5)))
-  const again = await load(out)
-  const joints: string[] = []
-  let textured = false
-  again.traverse((node) => {
-    if (node instanceof THREE.Bone) joints.push(node.name)
-    if (node instanceof THREE.Mesh && (node.material as THREE.MeshStandardMaterial).map) textured = true
-  })
-  assert.deepEqual(joints.sort(), [
-    'back_L', 'back_L_end', 'back_R', 'back_R_end', 'chest', 'front_L', 'front_L_end', 'front_R', 'front_R_end',
-    'head', 'head_end', 'hips', 'tail', 'tail_end',
+  assert.deepEqual(report.bones.map(({ name, inside, vertices, weighted }) => ({ name, inside, vertices, weighted })), [
+    { name: 'body', inside: 0, vertices: 24, weighted: 24 },
+    { name: 'arm', inside: 0, vertices: 24, weighted: 24 },
   ])
-  assert.ok(textured, 'textures survive')
-  const saved = again.getObjectByName('front_L')
-  assert.ok(saved && saved.rotation.z === 0, 'saved in the bind pose')
-  console.log('fox ok:', joints.length, 'joints')
+  const meshes: THREE.SkinnedMesh[] = []
+  scene.traverse((object) => { if (object instanceof THREE.SkinnedMesh) meshes.push(object) })
+  assert.equal(meshes.length, 2)
+  for (const mesh of meshes) {
+    const values = mesh.geometry.getAttribute('skinWeight')
+    for (let vertex = 0; vertex < values.count; vertex++) {
+      assert.deepEqual([values.getX(vertex), values.getY(vertex), values.getZ(vertex), values.getW(vertex)], [1, 0, 0, 0])
+    }
+  }
+  pose(scene, { rotations: { arm: [0, 0, Math.PI / 2] } })
+  const moving = meshes.find((mesh) => mesh.geometry.getAttribute('skinIndex').getX(0) === 1)
+  assert.ok(moving)
+  const center = new THREE.Vector3()
+  const positions = moving.geometry.getAttribute('position')
+  for (let vertex = 0; vertex < positions.count; vertex++) {
+    center.add(moving.applyBoneTransform(vertex, new THREE.Vector3().fromBufferAttribute(positions, vertex)))
+  }
+  center.divideScalar(positions.count)
+  assert.ok(center.distanceTo(new THREE.Vector3(2, 1, 0)) < 1e-6, 'rigid arm rotates as one piece')
+
+  const incomplete = bone('body', [0, 0, 0])
+  incomplete.userData.pieces = [0]
+  await assert.rejects(skin(model(), incomplete), /rigid skeleton leaves 24 vertices unassigned; assign every model piece/)
+  await assert.rejects(skin(model(), bone('body', [0, 0, 0])), /no deforming bone or rigid piece assignments/)
+  const duplicate = bone('body', [0, 0, 0])
+  duplicate.userData.pieces = [0, 1]
+  bone('arm', [2, 0, 0], duplicate).userData.pieces = [1]
+  await assert.rejects(skin(model(), duplicate), /piece 1 is assigned to both "body" and "arm"/)
+  console.log('fully rigid rigs bind all pieces without voxelization and reject unassigned geometry')
 }
 
-// Robot: already rigged, hands are SkinnedMeshes under transformed nodes
-{
-  const scene = await load(fileURLToPath(new URL('./fixtures/robot.glb', import.meta.url)))
-  const hips = bone('Hips', [0, 1.42, 0])
-  const spine = bone('Spine', [0, 2.2, 0], hips)
-  bone('HeadTop_End', [0, 4.4, 0], bone('Head', [0, 2.8, 0], spine))
-  for (const x of [0.6, -0.6]) {
-    const side = x > 0 ? 'Left' : 'Right'
-    const arm = bone(`${side}Arm`, [x, 2.37, 0], spine)
-    bone(`${side}Hand`, [2.3 * x, 1, 1], bone(`${side}ForeArm`, [1.5 * x, 1.75, 0], arm))
-    bone(`${side}Foot`, [x, 0, 0], bone(`${side}UpLeg`, [x, 1.3, 0], hips))
-  }
-  await skin(scene, hips)
-  // Mesh names can change on reload (three.js suffixes names that clashed with the old bones), so compare
-  // the set of per-mesh bounding boxes
-  const boxes = (object: THREE.Object3D) => {
-    const out: number[][] = []
-    object.traverse((node) => {
-      if (node instanceof THREE.SkinnedMesh) {
-        const box = new THREE.Box3().setFromObject(node, true)
-        out.push([...box.min.toArray(), ...box.max.toArray()].map((n) => Math.round(n * 1000) / 1000))
-      }
-    })
-    return out.sort((p, q) => p.join().localeCompare(q.join()))
-  }
-  const before = boxes(scene)
-  const out = join(dir, 'robot.glb')
-  await save(scene, out)
-  const after = boxes(await load(out))
-  assert.equal(after.length, before.length)
-  before.forEach((box, i) => assert.ok(box.every((n, k) => Math.abs(n - after[i][k]) < 2e-3), `a mesh moved in save: ${box} vs ${after[i]}`))
-  console.log('robot ok:', before.length, 'meshes identical after save')
-}
+await assert.rejects(skin(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()), bone('Root', [0, 0, 0])), /skin\(\) needs a container/)
 
-rmSync(dir, { recursive: true })
-assert.ok(!existsSync(dir))
 console.log('rig.test.ts passed')

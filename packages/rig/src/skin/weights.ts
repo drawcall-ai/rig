@@ -44,8 +44,8 @@ const BLUR_ITERATIONS = 100
 const ORIENTATION_WEIGHT = 2
 
 /**
- * Skin weights for a triangle soup in world space: voxelize, solve, then bind
- * `pieces` and unreached vertices, and build the per-bone report with warnings.
+ * Skin weights for a triangle soup in world space. Explicit pieces bind rigidly;
+ * deforming segments use voxel weights.
  * Weight slots index `skeleton`.
  */
 export async function computeWeights(
@@ -56,12 +56,23 @@ export async function computeWeights(
 ): Promise<{ skinIndices: Uint16Array<ArrayBuffer>; skinWeights: Float32Array<ArrayBuffer>; report: SkinReport }> {
   const bones = resolveSkeleton(skeleton)
   const lines = boneLines(bones)
+  if (lines.length === 0) {
+    const count = positions.length / 3
+    const skinIndices = new Uint16Array(count * 4)
+    const skinWeights = new Float32Array(count * 4)
+    const pinned = bindPieces(bones, positions, indices, skinIndices, skinWeights)
+    if (pinned.size !== count) {
+      throw new Error(`rigid skeleton leaves ${count - pinned.size} vertices unassigned; assign every model piece to a bone or add a deforming segment`)
+    }
+    return { skinIndices, skinWeights, report: { warnings: [], bones: boneReports(bones, positions, skinIndices, skinWeights) } }
+  }
   const volume = computeVoxelVolume(positions, indices, { resolution })
   const { skinIndices, skinWeights } = await solver({ positions, volume, boneLines: lines, blurIterations: BLUR_ITERATIONS, orientationWeight: ORIENTATION_WEIGHT })
   // Pieces first: their vertices are settled and must not count as unreached or bleeding
   const pinned = bindPieces(bones, positions, indices, skinIndices, skinWeights)
   const unreached = bindUnreached(positions, skinIndices, skinWeights, lines)
-  const reports = boneReports(bones, volume, positions, skinIndices, skinWeights)
+  const reports = boneReports(bones, positions, skinIndices, skinWeights)
+  bones.forEach((bone, index) => { if (bone.deform) reports[index].inside = insideFraction(volume, bone) })
   const warnings = skinWarnings({ bones, lines, positions, volume, resolution, skinIndices, skinWeights, reports, pinned, unreached })
   return { skinIndices, skinWeights, report: { warnings, bones: reports } }
 }
@@ -96,10 +107,14 @@ function bindPieces(
   const pinned = new Set<number>()
   if (!bones.some((bone) => bone.pieces?.length)) return pinned
   const pieces = meshPieces(positions, indices)
+  const assigned = new Map<number, string>()
   bones.forEach((bone, b) => {
     for (const index of bone.pieces ?? []) {
+      const owner = assigned.get(index)
+      if (owner !== undefined) throw new Error(`piece ${index} is assigned to both "${owner}" and "${bone.name}"; assign each piece to only one bone`)
       const piece = pieces[index]
       if (!piece) throw new Error(`bone "${bone.name}" names piece ${index}, but the model has ${pieces.length} pieces (0..${pieces.length - 1})`)
+      assigned.set(index, bone.name)
       for (const v of piece.vertices) {
         pinned.add(v)
         skinIndices.fill(0, v * 4, v * 4 + 4)
@@ -114,14 +129,13 @@ function bindPieces(
 
 function boneReports(
   bones: ResolvedBone[],
-  volume: VoxelVolume,
   positions: Float32Array,
   skinIndices: Uint16Array,
   skinWeights: Float32Array,
 ): BoneReport[] {
   const reports: BoneReport[] = bones.map((bone) => ({
     name: bone.name,
-    inside: bone.deform ? insideFraction(volume, bone) : 0,
+    inside: 0,
     vertices: 0,
     weighted: 0,
     min: null,

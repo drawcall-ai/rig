@@ -1,5 +1,5 @@
 /**
- * Procedural gallop for the example horse skeleton (examples/node/horse.skeleton.json).
+ * Procedural gallop for the example horse skeleton (examples/node/horse.glts).
  * Joints have identity bind rotations and the horse faces +z, so rotating a
  * joint about +x swings its bone backward: every channel is a pitch angle.
  *

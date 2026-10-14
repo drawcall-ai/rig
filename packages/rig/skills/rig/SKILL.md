@@ -1,62 +1,95 @@
 ---
 name: rig
-description: Rig any 3D model (glTF/GLB) for animation by writing three.js scripts with @drawcall/rig — humanoids, animals, birds, fish, robots, creatures with props or armor. Use when asked to rig, skin, add a skeleton or armature to, or make a mesh animatable. Not for animating a model that already has the rig you want, or for modeling.
+description: Rig glTF/GLB models for animation as editable .glts assets with @drawcall/rig. Use when asked to rig, skin, add a skeleton or armature, or make a mesh animatable. Pair with the glts skill for loading, rendering, and exporting. Not for modeling or animating an already suitable rig.
 ---
 
-# Rigging a model with @drawcall/rig
+# Rigging a model
 
-You rig by writing a TypeScript script: load the model, measure it, build a skeleton out of plain `THREE.Bone`s, compute skin weights, check the deformation in rendered images, and save. Re-run the whole script from `load()` after each change rather than patching a scene in place: `skin()` replaces the meshes and the armature, so a second pass on the same scene builds on the first one's output. The package docs in `node_modules/@drawcall/rig/README.md` list every option.
+Deliver a `.glts` asset containing the model reference, serialized skeleton, and rigging request, together with its source model. Rig computes weights; glts executes the asset, renders checks, and exports GLB. Read the installed glts skill at `node_modules/@drawcall/glts/skills/glts/SKILL.md` for that workflow and resource lifecycle ([upstream skill](https://github.com/drawcall-ai/glts/blob/main/packages/glts/skills/glts/SKILL.md)).
 
 ```sh
-npm i @drawcall/rig three && npm i -D tsx   # scripts: ESM ("type": "module"), run with npx tsx rig.ts
+npm install @drawcall/rig @drawcall/glts three
 ```
+
+## Inspect before defining joints
+
+Start with an inspection `.glts` using Three.js `GLTFLoader` with glts's `loadingManager`. Resolve the model URL against `import.meta.url`, add the model beneath `scene`, and supply preview lights. Render orthographic side, front, and top views to identify anatomy and facing direction. Focus on small articulated regions before choosing their controls; full-body views can hide fingers or wing rays.
+
+The creature's own left is `up × forward`: facing +z, left is +x; facing +x, left is -z. Naming sides from the camera's left silently swaps the rig.
+
+Use `THREE.Box3` for bounds, `pieces()` for connected geometry, and batched `section()` samples for interior limb coordinates. When sections merge a feature with its surroundings, use `pick()` sweeps across it: thickness peaks help distinguish wing rods from membranes. Batch nearby samples rather than voxelizing per point. When samples miss a supposed rod, sweep nearby positions before guessing depth or raising resolution. Mirror joint positions only after checking the opposite side; posed models can have different curves and depth.
+
+## Author the asset
 
 ```ts
-import { bone, load, pick, pieces, render, save, section, skin, type View } from '@drawcall/rig'
+// character.glts — coordinates below illustrate the pattern; measure your model.
+import * as THREE from 'three'
+import { isPreview, loadingManager, onDispose, scene } from '@drawcall/glts'
+import { RigLoader } from '@drawcall/rig'
 
-const scene = await load('model.glb')
-await render(scene, { out: 'shots/model.png' })          // what it is, which way it faces
-console.log(JSON.stringify(section(scene, [{ y: 0.3 }, { y: 0.6 }])), pieces(scene)) // limb centers per height; separate pieces
-console.log(JSON.stringify(pick(scene, { camera: '+x' }, [{ y: 0.9, z: 0.05 }, { y: 0.9, z: 0.1 }]))) // the solid under each grid point of the +x view
-const hips = bone('Hips', [0, 0.95, 0])                    // joints in world space, parent attached
-// ... the rest of the skeleton, every chain ending in a *_End bone
-console.log((await skin(scene, hips)).warnings)            // read every warning, then check visually
-const poses: Omit<View, 'camera'>[] = [{ title: 'left knee', rotations: { LeftLeg: [0.8, 0, 0] } } /* , one per major joint */]
-await render(scene, { out: 'shots/rom.png', views: poses.map((pose) => [{ ...pose, camera: '+x' }, { ...pose, camera: '+x', bones: false }]) })
-await render(scene, { out: 'shots/owners.png', views: [[{ camera: '+x', weights: true, bones: 'names' }]] }) // which bone owns what
-await save(scene, 'rigged.glb')
+const rig = await new RigLoader(loadingManager).loadAsync({
+  url: new URL('./character.glb', import.meta.url),
+  skeleton: [
+    { name: 'Hips', position: [0, 0.9, 0] },
+    { name: 'Spine', parent: 'Hips', position: [0, 1.1, 0] },
+    { name: 'Head', parent: 'Spine', position: [0, 1.5, 0] },
+    { name: 'Head_End', parent: 'Head', position: [0, 1.7, 0] },
+    // Add all measured limb chains, each with an end joint.
+  ],
+  resolution: 128,
+})
+scene.add(rig.scene)
+onDispose(() => rig.dispose())
+console.log(JSON.stringify(rig.report))
+
+if (isPreview) {
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2.5))
+  const light = new THREE.DirectionalLight(0xffffff, 2)
+  light.position.set(2, 4, 3)
+  scene.add(light)
+}
 ```
 
-## Find orientation before anything else
+For a procedural mesh already constructed in the asset, use `bone()` and `skin()` directly instead of loading it again. Rebuild from the original model on each iteration: re-skinning the previous result compounds its deformation.
 
-Render first and decide what the creature is and which world axis its face points to. Models often face +x or -z rather than glTF's +z. The creature's own left is `up × forward`: facing +z, left is +x; facing +x, left is -z. Getting this wrong silently swaps every Left/Right name.
+## Choose a skeleton the solver can use
 
-## Measure with section and pick, not with images
+For smooth deformation, a segment runs from its joint to its first child. List the continuation child before branches (Hips → Spine before legs). End each deforming chain with a tip joint: a hand without a child has no segment to attract smooth weights.
 
-Images identify body parts and judge deformation, but they can't give depth, and perspective distorts distances. Take joint positions from `section()` region centers, which are world `[x, y, z]` inside the solid: cut at knee height and each leg is one region, and its center is the knee joint. For a feature a cut can't single out, such as a wing's finger rods, which a section merges with the membrane between them, read its position off an orthographic view's grid and `pick` from the same view at that point: `pick` returns every span along the line, nearest first; the middle of the one you want is the joint position, and its thickness tells a rod from the membrane. A single guessed point misses thin rods in a sheet; pick a row of points across the sheet from a view facing the sheet (such as from above a wing) in one call, and take the thickness peaks. Spans come in whole voxels, so raise the resolution for thin parts. Adding the root bone to the scene before `skin()` (`scene.add(hips)`) lets `render` show the planned joints over the mesh, a cheap check before the solve.
+For smooth weighting, place joints inside the solid, centered in limb cross-sections; rigid pivots can sit in gaps between components. All serialized positions use the same model coordinate system, including children; do not subtract parent positions. Give humanoids Mixamo anatomical names for later retargeting; newly generated bones do not make source animation clips compatible. Other creatures benefit from clear anatomical names.
 
-## Skeleton rules the weights depend on
+Choose controls from intended movement and visible anatomy, rather than connectivity or material. One connected metal hand can span the wrist, palm, and fingers; treating it as one rigid piece loses those articulations. Preserve useful controls when balancing warning count against iteration speed.
 
-- A bone's segment runs from its joint to its first child, and weights gather around that segment, so add the continuation child first (Hips → Spine before the legs).
-- Leaf bones get no weights. End every chain with an end bone at the tip (`HeadTop_End`, `LeftHand_End`, `Tail_End`); without it the last real bone deforms nothing.
-- Joints belong inside the mesh, centered in the limb's cross-section. A segment outside the solid attracts nothing.
-- Humanoids: use Mixamo names (Hips, Spine, Spine1, Spine2, Neck, Head, LeftShoulder, LeftArm, LeftForeArm, LeftHand, LeftUpLeg, LeftLeg, LeftFoot, LeftToeBase, and Right*) so retargeting tools can map them; the bones are world-aligned in the model's rest pose, so existing clips still need retargeting rather than playing directly. Other creatures: clear anatomical names.
-- Separate rigid pieces (eyes, armor plates, props) listed by `pieces()`: set `b.userData.pieces = [index]` so they move without stretching; such a bone drives only its pieces. An accessory fused into the body mesh (a backpack, a vest) is not a separate piece: give it a normal bone, so neighbouring bones stop pulling it.
-- Along a chain, the joint decides where one bone's weights end and the next one's begin. An area that stays behind when a limb moves (a shoulder cap left flat while the arm rises) belongs to the parent; moving the child's joint toward the body puts that area along the child's segment.
-- A bone that animation never moves still holds weight. A short extra bone under the torso can keep an area that is fused to a limb (a jacket side under the arm, a belly under a leg) with the torso; retargeting ignores bones it doesn't know.
+Use `pieces` assignments for rigid components such as eyes, armor, and props, pinned to the joint that moves them. Fully rigid assemblies can assign every piece and avoid the voxel solve. Components spanning articulations need deforming segments. A short torso bone can hold a fused jacket or belly away from a moving limb.
 
-## Treat warnings as the checklist
+A joint separates the parent's weight region from the child's. If a shoulder cap stays behind when the arm rises, moving the arm joint toward the body can bring that region onto the arm's segment. On curved anatomy, interior endpoints can still put a straight segment outside the solid; follow measured curvature with intermediate joints before increasing resolution. More bones alone do not improve the result: a segment needs enough geometry and voxel resolution to influence it.
 
-`skin()` reports one warning per cause, with what the solver found and where; it doesn't prescribe the fix. Three are specific to this solver:
+## Iterate from evidence
 
-- "the main influence of no vertex": a low-poly limb where no ring of vertices lies between the bone's joint and its child's. The joint position it gives would put a ring between them.
-- "get no vertices of their own at resolution N", with sizes in voxels: those body parts (fingers, ears, small toes) are only a few voxels thick or long on this grid, so the solver can't separate their bones. A higher resolution or fewer, longer bones both resolve it.
-- "crossed between touching parts": the bone holds weight on a touching body part that belongs to another bone (arm onto torso, leg onto leg, tail onto legs). Moving the joints apart, a higher resolution, or binding separate pieces with `pieces` each reduce it. Between the finger bones of one membrane (wings, webbed feet), shared weight is expected; judge it in a pose render.
+Read the report alongside rendered deformations; neither alone proves quality. Begin at a moderate resolution and time the solve. Fix misplaced segments before increasing resolution; raise it when thin anatomy or touching parts remain unresolved. Doubling resolution costs about eight times the voxel work.
 
-Resolution is voxels along the model's longest axis, and each doubling costs about 8×. Time the first `skin()` at the default 128: if it takes well under a second, 256 still runs in seconds. Iterate at the highest resolution that stays fast, and raise it where a warning points at small body parts or leaks. A run at 512 or more can take long enough for a tool call to time out; running it in the background avoids that.
+Use warnings to choose the next measurement or motion check. A suggested joint position is a candidate: confirm it stays inside the intended anatomy and rerun the bend. A control with no dominant vertices can still move weighted children; test that motion before shortening its chain or deleting it. Tiny deforming segments may need higher resolution or fewer, longer segments. Cross-weighting between separate fingers can drag a neighbor, while blending across a wing membrane can be necessary. Inspect individual bends to distinguish them; a lower warning count alone is not improvement.
 
-## Judge the deformation, don't assume it
+Keep diagnostics in `isPreview` so export keeps the bind pose and original materials. Use rig's `pose()` for reproducible bends, `weights()` for weight paint, and native `THREE.SkeletonHelper` for the bone overlay. Add this to the preview block to see bone ownership and joints together:
 
-No warnings doesn't mean a good rig. `render` takes rows of views, and each view sets its own camera, pose and display, so one sheet can compare them side by side. Render one row per major joint bent about 45°, plus one natural motion for the creature (walk, swim, flap), and include a view with the bones hidden (`bones: false`): a flattened cap or a pulled-out side is easy to miss under the skeleton. When something stretches or drags, `weights: true` colors each vertex by its strongest bone, showing every boundary at once, and `weights: 'BoneName'` shows one bone's falloff. `isolate: 'BoneName'` hides everything else, which helps with hands, feet and anything else the body hides.
+```ts
+pose(rig.scene, { rotations: { Head: [0.6, 0, 0] } })
+const restore = weights(rig.scene)
+onDispose(restore)
+const helper = new THREE.SkeletonHelper(rig.scene)
+for (const material of [helper.material].flat()) material.depthTest = false
+helper.renderOrder = 1
+scene.add(helper)
+onDispose(() => helper.dispose())
+```
 
-A view can point a bone's segment at a world point with `targets`, read off the grid, `section()` or `pick()` like a joint position; this avoids guessing rotation signs and mirrors by flipping one coordinate. `rotations` are Euler XYZ in radians in the bone's bind frame, and bones made with `bone()` have world-aligned axes in the bind pose, so the bend direction follows the right-hand rule: a limb hanging along -y swings its end toward -z under a positive x rotation, which is backward for a creature facing +z. Twist around a bone's own segment needs a rotation. `save()` always writes the bind pose, whatever pose was last rendered. While only the poses change, a script that loads the saved rig and renders from it skips re-skinning, which saves the most at high resolution.
+Import `pose` and `weights` from `@drawcall/rig`. To isolate a joint's influence, replace the paint call with `weights(rig.scene, 'Head')`. Browser hosts need glts's preview mode (`isPreview: true`); its render command already enables it.
+
+Check each articulated region by rotating its own joint about 45° and confirming the intended geometry moves. Include small controls such as wrists, fingers, feet, and wing rays; a full-body pose can hide an ineffective joint. Use ownership paint to find competing regions, then a selected-bone heatmap to inspect the suspect influence. Judge the actual deformation in original-material, mesh-only views: overlays and paint can hide collapse or dragging. Also inspect a natural pose from several sides. Targets can avoid guessing bend signs.
+
+```sh
+npx @drawcall/glts render character.glts -o check.png --views '[[{"camera":"+x"},{"camera":"+z"},{"camera":"persp"}]]'
+npx @drawcall/glts export character.glts -o character.rigged.glb
+```
+
+Inspect the images, adjust the source skeleton, and rebuild from the original model. When delivering a GLB, reload it and check its bind pose, original materials, and a representative joint bend; success in the source preview does not validate the exported rig. Deliver the `.glts` with its referenced files and disclose remaining deformation limits. Follow the glts skill for export behavior and animation clips.

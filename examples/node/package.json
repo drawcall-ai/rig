@@ -3,17 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "rig": "tsx rig.ts",
-    "typecheck": "tsc --noEmit"
+    "render": "glts render horse.glts -o horse.check.png",
+    "render:debug": "glts render horse.debug.glts -o horse.debug.png",
+    "export": "glts export horse.glts -o horse.skinned.glb"
   },
   "dependencies": {
     "@drawcall/rig": "workspace:*",
-    "three": "^0.186.1"
-  },
-  "devDependencies": {
-    "@types/node": "^22.19.3",
-    "tsx": "^4.19.2",
-    "typescript": "^5.9.3",
-    "@types/three": "^0.186.0"
+    "three": "^0.186.1",
+    "@drawcall/glts": "^0.19.0"
   }
 }

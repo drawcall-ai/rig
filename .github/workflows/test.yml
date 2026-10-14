@@ -7,7 +7,7 @@ on:
   pull_request:
 
 jobs:
-  # Rendering runs on the CPU, so the whole suite (renders included) must pass on every OS and architecture
+  # Verify the runtime across supported operating systems and architectures.
   test:
     strategy:
       fail-fast: false

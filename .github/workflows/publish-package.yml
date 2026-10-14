@@ -58,8 +58,7 @@ jobs:
         working-directory: ./packages/rig
         run: npm pkg set version="${{ steps.gitversion.outputs.fullSemVer }}"
 
-      # pnpm (not npm) publish: it applies publishConfig, which swaps the src exports used in the
-      # workspace for the built dist ones, then hands the tarball to npm for OIDC and provenance.
+      # Publish the built package with npm trusted publishing and provenance.
       - name: Publish @drawcall/rig
         working-directory: ./packages/rig
         run: pnpm publish --access public --no-git-checks --provenance --tag latest

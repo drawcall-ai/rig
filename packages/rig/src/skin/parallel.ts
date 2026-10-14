@@ -50,7 +50,16 @@ function ask(worker: Worker, message: unknown): Promise<number> {
   })
 }
 
-export async function solveParallel(input: SolveInput, threads = availableParallelism()): Promise<SolveResult> {
+// One pool serves solves in sequence so concurrent loads cannot overwrite worker state.
+let pending: Promise<unknown> = Promise.resolve()
+
+export function solveParallel(input: SolveInput, threads = availableParallelism()): Promise<SolveResult> {
+  const result = pending.then(() => solve(input, threads))
+  pending = result.then(() => undefined, () => undefined)
+  return result
+}
+
+async function solve(input: SolveInput, threads: number): Promise<SolveResult> {
   const numInside = input.volume.insideIndices.length
   // Small grids are faster on one thread than with message round trips
   const count = Math.max(1, Math.min(threads, Math.floor(numInside / 20000)))

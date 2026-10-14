@@ -10,6 +10,7 @@
       header button { background: #2a2d31; color: #ddd; border: 1px solid #3a3e44; border-radius: 6px; padding: 6px 12px; cursor: pointer; font: inherit; }
       header button[aria-selected='true'] { background: #ffd23f; color: #111; border-color: #ffd23f; }
       header label { margin-left: 8px; }
+      header select { max-width: 220px; background: #2a2d31; color: #ddd; padding: 5px; border: 1px solid #3a3e44; border-radius: 6px; font: inherit; }
       #tabs { display: flex; gap: 6px; flex-wrap: wrap; }
       #status { padding: 0 12px 8px; color: #9aa4b1; font: 12px ui-monospace, monospace; max-height: 30vh; overflow: auto; }
       #status details { display: inline; white-space: pre-wrap; }
@@ -24,6 +25,7 @@
       <label><input id="play" type="checkbox" checked /> Play</label>
       <label><input id="bones" type="checkbox" checked /> Skeleton</label>
       <label><input id="xray" type="checkbox" /> X-ray</label>
+      <label>Weights <select id="weights" disabled><option value="original">Original materials</option><option value="ownership">Bone ownership</option></select></label>
     </header>
     <div id="status"></div>
     <main id="view"></main>

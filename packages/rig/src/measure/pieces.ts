@@ -11,7 +11,7 @@ import { gather } from './soup.js'
 export interface Piece {
   /** Index to use in bone.userData.pieces. */
   index: number
-  /** Name of the mesh the piece belongs to. */
+  /** Name of one mesh contributing to this connected component. */
   mesh: string
   vertices: number
   min: Vec3
@@ -20,7 +20,11 @@ export interface Piece {
   center: Vec3
 }
 
-/** Separate mesh pieces (props, armor, eyes, glasses), largest first, in world space. */
+/**
+ * Connected geometry components, largest first, in world space. Coincident vertices join components
+ * across UV seams and mesh boundaries. A component can span several articulations; connectivity
+ * alone does not imply rigidity.
+ */
 export function pieces(object: THREE.Object3D): Piece[] {
   const soup = gather(object)
   return meshPieces(soup.positions, soup.indices).map(({ vertices, min, max, center }, index) => {

@@ -1,0 +1,18 @@
+import * as THREE from 'three'
+import { gltsLoader, isPreview, onDispose, scene } from '@drawcall/glts'
+import { weights } from '@drawcall/rig'
+
+const horse = await gltsLoader.loadAsync('./horse.glts')
+scene.add(horse)
+
+if (isPreview) {
+  scene.background = new THREE.Color(0x2a2d31)
+  const restore = weights(horse)
+  onDispose(restore)
+
+  const helper = new THREE.SkeletonHelper(horse)
+  for (const material of [helper.material].flat()) material.depthTest = false
+  helper.renderOrder = 1
+  scene.add(helper)
+  onDispose(() => helper.dispose())
+}
