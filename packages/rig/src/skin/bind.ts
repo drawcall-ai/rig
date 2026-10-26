@@ -4,7 +4,8 @@ import * as THREE from 'three'
 import { gather } from '../measure/soup.js'
 import { checkResolution } from '../measure/voxelize.js'
 import type { SkeletonBone } from './skeleton.js'
-import { computeWeights, type SkinReport } from './weights.js'
+import { computeWeights, type SkinReport, type SkinWeights } from './weights.js'
+import { cacheKey, type SkinCache } from './cache.js'
 import { assertTRS, saveRest } from './rest.js'
 
 /**
@@ -14,9 +15,10 @@ import { assertTRS, saveRest } from './rest.js'
  * the current world-space bind pose) and removes any previous armature. Attaches an unparented `root` under `object`, preserving its world-space joints. Resolution =
  * voxels along the longest axis (default 128), as in section(). Returns per-bone results and warnings that
  * describe what the solver found. Attachments requiring shear fail before reparenting; bake nonuniform
- * scale into the model first.
+ * scale into the model first. Pass options instead of a resolution to reuse weights from a cache.
  */
-export async function skin(object: THREE.Object3D, root: THREE.Bone, resolution = 128): Promise<SkinReport> {
+export async function skin(object: THREE.Object3D, root: THREE.Bone, options: number | SkinOptions = {}): Promise<SkinReport> {
+  const { resolution = 128, cache } = typeof options === 'number' ? { resolution: options } : options
   if (object instanceof THREE.Mesh) throw new Error('skin() needs a container: add the mesh to a Group or Scene first')
   if (object === root) throw new Error('skin() needs a model container separate from the root bone; use a Group or Scene')
   checkResolution(resolution, 'skin(scene, root, 256)')
@@ -40,7 +42,10 @@ export async function skin(object: THREE.Object3D, root: THREE.Bone, resolution 
   if (!root.parent) object.attach(root)
   root.updateWorldMatrix(true, true)
   const soup = gather(object)
-  const { skinIndices, skinWeights, report } = await computeWeights(soup.positions, soup.indices, bones.map((bone) => toSkeletonBone(bone, root)), resolution)
+  const skeleton = bones.map((bone) => toSkeletonBone(bone, root))
+  const { skinIndices, skinWeights, report } = cache
+    ? await cachedWeights(cache, soup.positions, soup.indices, skeleton, resolution)
+    : await computeWeights(soup.positions, soup.indices, skeleton, resolution)
   const three = new THREE.Skeleton(bones)
   soup.meshes.forEach((mesh, m) => {
     const offset = soup.offsets[m]
@@ -66,6 +71,31 @@ export async function skin(object: THREE.Object3D, root: THREE.Bone, resolution 
   })
   bones.forEach(saveRest)
   return report
+}
+
+export interface SkinOptions {
+  /** Voxels along the longest axis, as in section(). */
+  resolution?: number
+  /**
+   * Keeps solved weights by a hash of everything that determines them (geometry, bones, resolution, rig
+   * version): skinning the same input again skips the solve and gives identical weights.
+   */
+  cache?: SkinCache
+}
+
+/** A hit returns exactly what the solve would; the report is copied so the caller cannot edit the cached one. */
+async function cachedWeights(
+  cache: SkinCache,
+  positions: Float32Array<ArrayBuffer>,
+  indices: Uint32Array<ArrayBuffer>,
+  skeleton: SkeletonBone[],
+  resolution: number,
+): Promise<SkinWeights> {
+  const key = await cacheKey(positions, indices, skeleton, resolution)
+  const hit = cache.get(key)
+  const weights = hit ?? await computeWeights(positions, indices, skeleton, resolution)
+  if (!hit) cache.set(key, weights)
+  return { ...weights, report: structuredClone(weights.report) }
 }
 
 /** The root gets no skeleton parent, even when attached under a bone of the old armature. */

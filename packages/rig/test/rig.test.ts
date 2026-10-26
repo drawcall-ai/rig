@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import * as THREE from 'three'
-import { bone, pick, pieces, section, skin } from '../src/index.js'
+import { bone, bones, pick, pieces, section, skin, type SkinWeights } from '../src/index.js'
+import { solveSkinWeights } from '../src/skin/solve.js'
+import { useSolver } from '../src/skin/weights.js'
 import { pose } from '../src/pose.js'
 import { weights } from '../src/weights.js'
 import { makeCapsule } from './capsule.js'
@@ -119,6 +121,7 @@ import { makeCapsule } from './capsule.js'
   const suggested = Number(hint[1].split(',')[1])
   const fixed = await skin(tube(), rig(suggested), 64)
   assert.deepEqual(fixed.warnings, [], 'following the suggestion clears the warning')
+  assert.ok(fixed.closed, 'welded across its UV seam, the capped cylinder is closed')
   // On a coarse grid a bone without vertices and without a ring gap gets the grouped warning with sizes in voxels
   const coarse = await skin(tube(), rig(1.1), 16)
   assert.ok(
@@ -126,7 +129,7 @@ import { makeCapsule } from './capsule.js'
     `grouped warning: ${coarse.warnings}`,
   )
 
-  await assert.rejects(Reflect.apply(skin, undefined, [tube(), rig(1.1), { resolution: 64 }]), /resolution must be a positive integer, e.g. skin\(scene, root, 256\)/)
+  await assert.rejects(skin(tube(), rig(1.1), { resolution: 0.5 }), /resolution must be a positive integer, e.g. skin\(scene, root, 256\)/)
   assert.throws(() => section(tube(), [{ y: 2 }], 0.5), /resolution must be a positive integer/)
 
   // Removing an old armature keeps what hangs off it: a marker, and the new root attached under an old bone
@@ -286,6 +289,53 @@ import { makeCapsule } from './capsule.js'
   bone('arm', [2, 0, 0], duplicate).userData.pieces = [1]
   await assert.rejects(skin(model(), duplicate), /piece 1 is assigned to both "body" and "arm"/)
   console.log('fully rigid rigs bind all pieces without voxelization and reject unassigned geometry')
+}
+
+// A cache hit skips the solve and binds exactly the weights a miss does; the key changes with the resolution.
+// The report measures the solid: the closed capsule's volume, high by less than one cell over its surface.
+{
+  let solves = 0
+  useSolver((input) => {
+    solves++
+    return solveSkinWeights(input)
+  })
+  const capsule = makeCapsule()
+  const model = () => {
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.BufferAttribute(capsule.positions, 3))
+    geometry.setIndex(new THREE.BufferAttribute(capsule.indices, 1))
+    return new THREE.Group().add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial()))
+  }
+  const chain = () => bones([
+    { name: 'low', position: [0, -0.9, 0] },
+    { name: 'high', parent: 'low', position: [0, 0, 0] },
+    { name: 'tip', parent: 'high', position: [0, 0.9, 0] },
+  ]).root
+  const bound = (scene: THREE.Object3D) => {
+    const meshes: THREE.SkinnedMesh[] = []
+    scene.traverse((node) => node instanceof THREE.SkinnedMesh && meshes.push(node))
+    return meshes.map((mesh) => [mesh.geometry.getAttribute('skinIndex').array, mesh.geometry.getAttribute('skinWeight').array])
+  }
+  const cache = new Map<string, SkinWeights>()
+  const missed = model()
+  const miss = await skin(missed, chain(), { resolution: 32, cache })
+  const hitScene = model()
+  const hit = await skin(hitScene, chain(), { resolution: 32, cache })
+  assert.equal(solves, 1, 'the hit skipped the solve')
+  assert.deepEqual(hit, miss)
+  assert.deepEqual(bound(hitScene), bound(missed))
+  await skin(model(), chain(), { resolution: 24, cache })
+  assert.deepEqual([solves, cache.size], [2, 2], 'another resolution misses')
+  useSolver(solveSkinWeights)
+
+  const exact = Math.PI * 0.3 ** 2 * 1.4 + (4 / 3) * Math.PI * 0.3 ** 3
+  const shell = (2 * Math.PI * 0.3 * 1.4 + 4 * Math.PI * 0.3 ** 2) * (2 / 32)
+  assert.ok(miss.closed, 'the capsule is closed')
+  assert.ok(miss.volume !== null && miss.volume > exact && miss.volume < exact + shell, `volume ${miss.volume}, exact ${exact}`)
+  const tube = new THREE.Group().add(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.8, 16, 4, true), new THREE.MeshBasicMaterial()))
+  const open = await skin(tube, chain(), 32)
+  assert.equal(open.closed, false, 'an open-ended tube is not')
+  console.log('cache ok; capsule volume', miss.volume, 'exact', exact)
 }
 
 await assert.rejects(skin(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()), bone('Root', [0, 0, 0])), /skin\(\) needs a container/)

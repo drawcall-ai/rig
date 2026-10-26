@@ -50,7 +50,9 @@ if (isPreview) {
 }
 ```
 
-For a procedural mesh already constructed in the asset, use `bone()` and `skin()` directly instead of loading it again. Rebuild from the original model on each iteration: re-skinning the previous result compounds its deformation.
+For a procedural mesh already constructed in the asset, or a model an app has already loaded, skin it directly instead of loading it again. When the skeleton is data, such as one `as const` list an app shares with the code that animates it, build the bones with `bones()`: it validates the list as `RigLoader` does, and with an `as const` list a misspelled parent or bone name fails to type-check. Build single joints by hand with `bone()`. Rebuild from the original model on each iteration: re-skinning the previous result compounds its deformation.
+
+When an app skins the same model at every start or reload, give `skin()` a cache: an unchanged mesh, skeleton and resolution then skip the solve and bind identical weights, and any change solves again. A `Map` caches for the session; to keep weights across reloads, back the cache with storage read before skinning.
 
 ## Choose a skeleton the solver can use
 

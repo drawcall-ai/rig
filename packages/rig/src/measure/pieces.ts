@@ -81,16 +81,28 @@ function connect(positions: Float32Array, indices: Uint32Array): Int32Array {
   const union = (a: number, b: number): void => {
     parent[find(a)] = find(b)
   }
-  const byPosition = new Map<string, number>()
-  for (let v = 0; v < count; v++) {
-    const key = `${positions[v * 3]},${positions[v * 3 + 1]},${positions[v * 3 + 2]}`
-    const first = byPosition.get(key)
-    if (first === undefined) byPosition.set(key, v)
-    else union(v, first)
-  }
+  weld(positions).forEach((first, v) => union(v, first))
   for (let t = 0; t < indices.length; t += 3) {
     union(indices[t], indices[t + 1])
     union(indices[t], indices[t + 2])
   }
   return parent.map((_, v) => find(v))
+}
+
+/**
+ * For each vertex, the first vertex at its position: seams split vertices that one surface shares.
+ * Positions match exactly, or within the same `step`-sized cell when one is given.
+ */
+export function weld(positions: Float32Array, step = 0): Int32Array {
+  const count = positions.length / 3
+  const first = new Int32Array(count)
+  const byPosition = new Map<string, number>()
+  const snap = (value: number) => (step > 0 ? Math.round(value / step) : value)
+  for (let v = 0; v < count; v++) {
+    const key = `${snap(positions[v * 3])},${snap(positions[v * 3 + 1])},${snap(positions[v * 3 + 2])}`
+    const known = byPosition.get(key)
+    if (known === undefined) byPosition.set(key, v)
+    first[v] = known ?? v
+  }
+  return first
 }

@@ -3,6 +3,7 @@
  * a skeleton in, per-vertex skin weights and a report with warnings out.
  */
 
+import { isClosed } from '../measure/closed.js'
 import { meshPieces } from '../measure/pieces.js'
 import { cellAt, computeVoxelVolume, isInside, type VoxelVolume } from '../measure/voxelize.js'
 import { segmentDistanceSq, type Vec3 } from '../vec3.js'
@@ -27,6 +28,22 @@ export interface SkinReport {
   /** What the solver found that may need a change, one entry per cause. */
   warnings: string[]
   bones: BoneReport[]
+  /**
+   * The mesh's solid volume in cubic world units (the model's own units under an unscaled container, as
+   * with RigLoader; m³ for a model in meters): the inside voxels at this resolution. Cells the surface
+   * touches count whole, so it runs high by up to a cell's width times the surface area. Null when the
+   * skeleton is fully rigid, which skips voxelization.
+   */
+  volume: number | null
+  /** Whether the mesh is watertight: every edge shared by exactly two triangles, coincident vertices merged. */
+  closed: boolean
+}
+
+/** What a solve gives skin(): weight slots index the skeleton's bones, four per vertex. */
+export interface SkinWeights {
+  skinIndices: Uint16Array<ArrayBuffer>
+  skinWeights: Float32Array<ArrayBuffer>
+  report: SkinReport
 }
 
 export type Solve = (input: SolveInput) => SolveResult | Promise<SolveResult>
@@ -51,10 +68,11 @@ const ORIENTATION_WEIGHT = 2
 export async function computeWeights(
   positions: Float32Array,
   indices: Uint32Array,
-  skeleton: SkeletonBone[],
+  skeleton: readonly SkeletonBone[],
   resolution: number,
-): Promise<{ skinIndices: Uint16Array<ArrayBuffer>; skinWeights: Float32Array<ArrayBuffer>; report: SkinReport }> {
+): Promise<SkinWeights> {
   const bones = resolveSkeleton(skeleton)
+  const closed = isClosed(positions, indices)
   const lines = boneLines(bones)
   if (lines.length === 0) {
     const count = positions.length / 3
@@ -64,7 +82,8 @@ export async function computeWeights(
     if (pinned.size !== count) {
       throw new Error(`rigid skeleton leaves ${count - pinned.size} vertices unassigned; assign every model piece to a bone or add a deforming segment`)
     }
-    return { skinIndices, skinWeights, report: { warnings: [], bones: boneReports(bones, positions, skinIndices, skinWeights) } }
+    const reports = boneReports(bones, positions, skinIndices, skinWeights)
+    return { skinIndices, skinWeights, report: { warnings: [], bones: reports, volume: null, closed } }
   }
   const volume = computeVoxelVolume(positions, indices, { resolution })
   const { skinIndices, skinWeights } = await solver({ positions, volume, boneLines: lines, blurIterations: BLUR_ITERATIONS, orientationWeight: ORIENTATION_WEIGHT })
@@ -74,7 +93,8 @@ export async function computeWeights(
   const reports = boneReports(bones, positions, skinIndices, skinWeights)
   bones.forEach((bone, index) => { if (bone.deform) reports[index].inside = insideFraction(volume, bone) })
   const warnings = skinWarnings({ bones, lines, positions, volume, resolution, skinIndices, skinWeights, reports, pinned, unreached })
-  return { skinIndices, skinWeights, report: { warnings, bones: reports } }
+  const solid = volume.insideIndices.length * volume.cellSize ** 3
+  return { skinIndices, skinWeights, report: { warnings, bones: reports, volume: solid, closed } }
 }
 
 /** Vertices with all-zero weights get weight 1 on the nearest bone line. */

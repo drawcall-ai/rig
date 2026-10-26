@@ -7,19 +7,23 @@
 import { distance, type Vec3 } from '../vec3.js'
 import { MAX_BONES_PER_SOLVE, type BoneLine } from './solve.js'
 
-export interface SkeletonBone {
-  name: string
+/**
+ * One bone of a skeleton. `Name` is the union of the skeleton's bone names: write the skeleton `as const`
+ * (or pass it straight to bones()) to keep them, so a parent naming no bone of the skeleton is a type error.
+ */
+export interface SkeletonBone<Name extends string = string> {
+  readonly name: Name
   /** Name of the parent bone; omit for a root. */
-  parent?: string
+  readonly parent?: NoInfer<Name>
   /** Absolute joint position, including children. RigLoader interprets it in model coordinates. */
-  position: Vec3
+  readonly position: Vec3
   /**
    * Rigid attachments: indices of separate mesh pieces (see pieces()) bound 100% to this bone,
    * e.g. glasses, a helmet, armor plates, a prop. A bone with pieces drives only them.
    * An empty array makes a non-deforming grouping joint. Assign each piece to only one bone.
    * A fully rigid skeleton needs assignments covering every model piece; it needs no end bones.
    */
-  pieces?: number[]
+  readonly pieces?: readonly number[]
 }
 
 export interface ResolvedBone extends SkeletonBone {
@@ -32,7 +36,7 @@ export interface ResolvedBone extends SkeletonBone {
 }
 
 /** Validates the bones and resolves parents, children, segment ends and which bones deform. */
-export function resolveSkeleton(bones: SkeletonBone[]): ResolvedBone[] {
+export function resolveSkeleton(bones: readonly SkeletonBone[]): ResolvedBone[] {
   if (bones.length > MAX_BONES_PER_SOLVE) throw new Error(`skeleton has ${bones.length} bones, max ${MAX_BONES_PER_SOLVE}`)
 
   const indexOf = new Map<string, number>()

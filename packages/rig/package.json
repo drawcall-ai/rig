@@ -39,7 +39,7 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "tsx test/parity.test.ts && tsx test/rig.test.ts && tsx test/loader.test.ts && tsx test/glts.test.ts && tsx test/pose.test.ts",
+    "test": "tsx test/parity.test.ts && tsx test/rig.test.ts && tsx test/bones.test.ts && tsx test/loader.test.ts && tsx test/glts.test.ts && tsx test/pose.test.ts",
     "bench": "tsx scripts/bench.ts",
     "prepack": "pnpm build"
   },
