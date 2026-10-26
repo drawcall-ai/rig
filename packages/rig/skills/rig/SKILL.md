@@ -54,18 +54,6 @@ Use `RigLoader` when the asset loads its own model. When the model is already in
 
 Skinning reads joints and mesh in world space. Skin the model unscaled at the origin, then place it: a model moved first no longer matches a skeleton measured in model coordinates.
 
-A cache makes repeated skinning of the same model cheap, but its key hashes the world-space mesh, so skin at the same fixed transform every time. To keep weights across reloads, preload IndexedDB into a `Map`, pass the `Map`, and write new entries back:
-
-```ts
-import { skin, type SkinSolution } from '@drawcall/rig'
-
-// store: your IndexedDB wrapper; values must survive structured clone, so not JSON
-const cache = new Map<string, SkinSolution>(await store.readAll())
-const known = new Set(cache.keys())
-await skin(model, root, { cache })
-await store.writeAll([...cache].filter(([key]) => !known.has(key)))
-```
-
 ## Choose a skeleton the solver can use
 
 For smooth deformation, a segment runs from its joint to its first child. List the continuation child before branches (Hips → Spine before legs). End each deforming chain with a tip joint: a hand without a child has no segment to attract smooth weights.

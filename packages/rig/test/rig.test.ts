@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict'
 import * as THREE from 'three'
-import { bone, pick, pieces, section, skin, type SkinSolution } from '../src/index.js'
+import { bone, pick, pieces, section, skin } from '../src/index.js'
 import { gather } from '../src/measure/soup.js'
 import { solid } from '../src/measure/solid.js'
-import { solveSkinWeights } from '../src/skin/solve.js'
-import { useSolver } from '../src/skin/weights.js'
 import { pose } from '../src/pose.js'
 import { weights } from '../src/weights.js'
 import { makeCapsule } from './capsule.js'
@@ -131,7 +129,7 @@ import { makeCapsule } from './capsule.js'
     `grouped warning: ${coarse.warnings}`,
   )
 
-  await assert.rejects(skin(tube(), rig(1.1), { resolution: 0.5 }), /resolution must be a positive integer, e.g. skin\(scene, root, 256\)/)
+  await assert.rejects(Reflect.apply(skin, undefined, [tube(), rig(1.1), { resolution: 64 }]), /resolution must be a positive integer, e.g. skin\(scene, root, 256\)/)
   assert.throws(() => section(tube(), [{ y: 2 }], 0.5), /resolution must be a positive integer/)
 
   // Removing an old armature keeps what hangs off it: a marker, and the new root attached under an old bone
@@ -293,44 +291,23 @@ import { makeCapsule } from './capsule.js'
   console.log('fully rigid rigs bind all pieces without voxelization and reject unassigned geometry')
 }
 
-// A cache hit skips the solve and binds exactly the weights a miss does; the key changes with the resolution
+// A skeleton given as data is built and bound as RigLoader does; three's own lookup finds the bound bones
 {
-  let solves = 0
-  useSolver((input) => {
-    solves++
-    return solveSkinWeights(input)
-  })
   const capsule = makeCapsule()
-  const model = () => {
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.BufferAttribute(capsule.positions, 3))
-    geometry.setIndex(new THREE.BufferAttribute(capsule.indices, 1))
-    return new THREE.Group().add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial()))
-  }
-  const chain = () => ([
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(capsule.positions, 3))
+  geometry.setIndex(new THREE.BufferAttribute(capsule.indices, 1))
+  const model = new THREE.Group().add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial()))
+  await skin(model, [
     { name: 'low', position: [0, -0.9, 0] },
     { name: 'high', parent: 'low', position: [0, 0, 0] },
     { name: 'tip', parent: 'high', position: [0, 0.9, 0] },
-  ] as const)   // passed to skin() as data
-  const bound = (scene: THREE.Object3D) => {
-    const meshes: THREE.SkinnedMesh[] = []
-    scene.traverse((node) => node instanceof THREE.SkinnedMesh && meshes.push(node))
-    return meshes.map((mesh) => [mesh.geometry.getAttribute('skinIndex').array, mesh.geometry.getAttribute('skinWeight').array])
-  }
-  const cache = new Map<string, SkinSolution>()
-  const missed = model()
-  const miss = await skin(missed, chain(), { resolution: 32, cache })
-  const hitScene = model()
-  const hit = await skin(hitScene, chain(), { resolution: 32, cache })
-  assert.equal(solves, 1, 'the hit skipped the solve')
-  assert.deepEqual(hit, miss)
-  assert.deepEqual(bound(hitScene), bound(missed))
-  await skin(model(), chain(), { resolution: 24, cache })
-  assert.deepEqual([solves, cache.size], [2, 2], 'another resolution misses')
-  useSolver(solveSkinWeights)
-  for (const [key, value] of cache) cache.set(key, JSON.parse(JSON.stringify(value)))
-  await assert.rejects(skin(model(), chain(), { resolution: 32, cache }), /the skin cache returned a broken entry; store values with structured clone/)
-  console.log('cache ok')
+  ], 32)
+  const high = model.getObjectByName('high')
+  let bound: THREE.SkinnedMesh | undefined
+  model.traverse((node) => { if (node instanceof THREE.SkinnedMesh) bound = node })
+  assert.ok(high instanceof THREE.Bone && bound?.skeleton.bones.includes(high), 'the bone found by name is the bound one')
+  console.log('skeleton data ok')
 }
 
 // The solid: exact volume of a closed mesh; open where solids share an edge; degenerate triangles cover nothing
