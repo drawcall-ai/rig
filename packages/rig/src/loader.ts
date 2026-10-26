@@ -61,7 +61,7 @@ export class RigLoader extends Loader<RigResult, RigRequest> {
     const url = String(request.url)
     const resolution = request.resolution ?? 128
     checkResolution(resolution, 'RigLoader resolution')
-    const { root } = bones(request.skeleton)
+    const root = bones(request.skeleton)
     const source = await this.read(url, onProgress)
     const { scene } = source
     const resources = new Resources()

@@ -311,7 +311,7 @@ import { makeCapsule } from './capsule.js'
     { name: 'low', position: [0, -0.9, 0] },
     { name: 'high', parent: 'low', position: [0, 0, 0] },
     { name: 'tip', parent: 'high', position: [0, 0.9, 0] },
-  ]).root
+  ])
   const bound = (scene: THREE.Object3D) => {
     const meshes: THREE.SkinnedMesh[] = []
     scene.traverse((node) => node instanceof THREE.SkinnedMesh && meshes.push(node))
