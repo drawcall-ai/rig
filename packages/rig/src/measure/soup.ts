@@ -34,7 +34,12 @@ export function gather(object: THREE.Object3D): Soup {
     }
     const index = mesh.geometry.getIndex()
     const count = index ? index.count : position.count
-    for (let i = 0; i < count; i++) indices.push(offsets[m] + (index ? index.getX(i) : i))
+    // A mirroring transform turns the triangles inside out; swapping two corners keeps them facing outward
+    const corners = mesh.matrixWorld.determinant() < 0 ? [0, 2, 1] : [0, 1, 2]
+    for (let i = 0; i < count; i++) {
+      const corner = i - (i % 3) + corners[i % 3]
+      indices.push(offsets[m] + (index ? index.getX(corner) : corner))
+    }
   })
   return { meshes, offsets, positions, indices: new Uint32Array(indices) }
 }

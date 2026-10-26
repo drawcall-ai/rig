@@ -345,6 +345,11 @@ import { makeCapsule } from './capsule.js'
   assert.ok(boxSolid.closed && boxSolid.volume !== null && Math.abs(boxSolid.volume - 6) < 1e-6, `box volume ${boxSolid.volume}`)
   const touching = soup(new THREE.BoxGeometry(1, 1, 1), new THREE.BoxGeometry(1, 1, 1).translate(1, 1, 0))
   assert.deepEqual(solid(touching.positions, touching.indices), { closed: false, volume: null })
+  const mirrored = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1))
+  mirrored.scale.x = -1
+  mirrored.position.x = 3
+  const pair = gather(new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1)), mirrored))
+  assert.deepEqual(solid(pair.positions, pair.indices), { closed: true, volume: 2 }, 'a mirrored copy adds its volume')
   const degenerate = Uint32Array.from([...box.indices, box.indices[0], box.indices[0], box.indices[1]])
   assert.deepEqual(solid(box.positions, degenerate), boxSolid)
   console.log('solid ok')

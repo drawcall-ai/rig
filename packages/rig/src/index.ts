@@ -1,5 +1,5 @@
 /** Three.js rigging runtime for glTF assets and procedural scenes. */
-export { bone, bones } from './bone.js'
+export { bone, bones, type BonesByName } from './bone.js'
 export { pieces, type Piece } from './measure/pieces.js'
 export { section, type Axis, type Plane, type Region, type Section } from './measure/section.js'
 export { skin, type SkinOptions } from './skin/bind.js'

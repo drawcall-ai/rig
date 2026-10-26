@@ -24,7 +24,10 @@ export function solid(positions: Float32Array, indices: Uint32Array): Solid {
   for (let t = 0; t < indices.length; t += 3) {
     const a = vertex[indices[t]], b = vertex[indices[t + 1]], c = vertex[indices[t + 2]]
     if (a === b || b === c || c === a) continue
-    for (const [from, to] of [[a, b], [b, c], [c, a]]) edges.set(from * count + to, (edges.get(from * count + to) ?? 0) + 1)
+    for (const [from, to] of [[a, b], [b, c], [c, a]]) {
+      const key = from * count + to
+      edges.set(key, (edges.get(key) ?? 0) + 1)
+    }
     sixfold += tetrahedron(positions, a * 3, b * 3, c * 3)
   }
   const closed = edges.size > 0 && [...edges].every(([key, uses]) => {
