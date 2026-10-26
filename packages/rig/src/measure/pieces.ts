@@ -6,7 +6,7 @@
 
 import type * as THREE from 'three'
 import type { Vec3 } from '../vec3.js'
-import { gather } from './soup.js'
+import { gather, weld } from './soup.js'
 
 export interface Piece {
   /** Index to use in bone.userData.pieces. */
@@ -87,22 +87,4 @@ function connect(positions: Float32Array, indices: Uint32Array): Int32Array {
     union(indices[t], indices[t + 2])
   }
   return parent.map((_, v) => find(v))
-}
-
-/**
- * For each vertex, the first vertex at its position: seams split vertices that one surface shares.
- * Positions match exactly, or within the same `step`-sized cell when one is given.
- */
-export function weld(positions: Float32Array, step = 0): Int32Array {
-  const count = positions.length / 3
-  const first = new Int32Array(count)
-  const byPosition = new Map<string, number>()
-  const snap = (value: number) => (step > 0 ? Math.round(value / step) : value)
-  for (let v = 0; v < count; v++) {
-    const key = `${snap(positions[v * 3])},${snap(positions[v * 3 + 1])},${snap(positions[v * 3 + 2])}`
-    const known = byPosition.get(key)
-    if (known === undefined) byPosition.set(key, v)
-    first[v] = known ?? v
-  }
-  return first
 }

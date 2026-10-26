@@ -1,6 +1,6 @@
 ---
 name: rig
-description: Rig glTF/GLB models for animation as editable .glts assets with @drawcall/rig. Use when asked to rig, skin, add a skeleton or armature, or make a mesh animatable. Pair with the glts skill for loading, rendering, and exporting. Not for modeling or animating an already suitable rig.
+description: Rig glTF/GLB models for animation as editable .glts assets with @drawcall/rig. Use when asked to rig, skin, add a skeleton or armature, make a mesh animatable, or skin a model at runtime in a three.js app from a serialized skeleton. Pair with the glts skill for loading, rendering, and exporting. Not for modeling or animating an already suitable rig.
 ---
 
 # Rigging a model
@@ -50,9 +50,21 @@ if (isPreview) {
 }
 ```
 
-For a procedural mesh already constructed in the asset, or a model an app has already loaded, skin it directly instead of loading it again. When the skeleton is data, such as one `as const` list an app shares with the code that animates it, build the bones with `bones()`: it validates the list as `RigLoader` does, and with an `as const` list a misspelled parent or bone name fails to type-check. Build single joints by hand with `bone()`. Rebuild from the original model on each iteration: re-skinning the previous result compounds its deformation.
+Use `RigLoader` when the asset loads its own model. When the model is already in hand, such as a procedural mesh or a model an app loaded, skin it directly: build its bones with `bones()` when the skeleton is one data list shared with other code (such as an animation library), and with `bone()` when joints are built in code. Rebuild from the original model on each iteration: re-skinning the previous result compounds its deformation.
 
-When an app skins the same model at every start or reload, give `skin()` a cache: an unchanged mesh, skeleton and resolution then skip the solve and bind identical weights, and any change solves again. A `Map` caches for the session; to keep weights across reloads, back the cache with storage read before skinning.
+Skinning reads joints and mesh in world space. Skin the model unscaled at the origin, then place it: a model moved first no longer matches a skeleton measured in model coordinates.
+
+A cache makes repeated skinning of the same model cheap, but its key hashes the world-space mesh, so skin at the same fixed transform every time. It needs Node or a page on https or localhost. To keep weights across reloads, preload IndexedDB into a `Map`, pass the `Map`, and write new entries back:
+
+```ts
+import { skin, type SkinSolution } from '@drawcall/rig'
+import { entries, setMany } from 'idb-keyval' // or any IndexedDB wrapper
+
+const cache = new Map(await entries<string, SkinSolution>())
+const known = new Set(cache.keys())
+await skin(model, root, { cache })
+await setMany([...cache].filter(([key]) => !known.has(key)))
+```
 
 ## Choose a skeleton the solver can use
 

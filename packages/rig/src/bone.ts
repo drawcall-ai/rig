@@ -21,7 +21,7 @@ export function bone(name: string, world: Vec3, parent?: THREE.Bone): THREE.Bone
  */
 export function bones<Name extends string>(
   skeleton: readonly SkeletonBone<Name>[],
-): { root: THREE.Bone; byName: Record<Name, THREE.Bone> } {
+): { root: THREE.Bone; byName: BonesByName<Name> } {
   const resolved = resolveSkeleton(skeleton)
   const roots = resolved.filter((entry) => entry.parentIndex < 0)
   if (roots.length !== 1) throw new Error(`skeleton must have exactly one root, got ${roots.length}`)
@@ -38,6 +38,9 @@ export function bones<Name extends string>(
   if (!covers(byName, skeleton)) throw new Error('bones() left a bone out of byName')
   return { root: built[resolved.indexOf(roots[0])], byName }
 }
+
+/** Every bone by its literal name; any lookup may miss when the names are only known as `string`. */
+export type BonesByName<Name extends string> = string extends Name ? Partial<Record<string, THREE.Bone>> : Record<Name, THREE.Bone>
 
 /** Narrows byName to every name of the skeleton, checked. */
 function covers<Name extends string>(

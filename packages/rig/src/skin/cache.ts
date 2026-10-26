@@ -2,12 +2,38 @@
 
 import manifest from '../../package.json' with { type: 'json' }
 import type { SkeletonBone } from './skeleton.js'
-import type { SkinWeights } from './weights.js'
+import { computeWeights, type SkinSolution } from './weights.js'
 
 /** Where skin() keeps solved weights between calls; a Map satisfies it, and a persistent store can too. */
 export interface SkinCache {
-  get(key: string): SkinWeights | undefined
-  set(key: string, value: SkinWeights): void
+  get(key: string): SkinSolution | undefined
+  set(key: string, value: SkinSolution): void
+}
+
+/**
+ * computeWeights through `cache`. A hit returns exactly what the solve would; the report is copied so the
+ * caller cannot edit the cached one.
+ */
+export async function cachedWeights(
+  cache: SkinCache,
+  positions: Float32Array<ArrayBuffer>,
+  indices: Uint32Array<ArrayBuffer>,
+  skeleton: readonly SkeletonBone[],
+  resolution: number,
+): Promise<SkinSolution> {
+  const key = await cacheKey(positions, indices, skeleton, resolution)
+  const hit = cache.get(key)
+  if (hit) check(hit, positions.length / 3)
+  const solution = hit ?? await computeWeights(positions, indices, skeleton, resolution)
+  if (!hit) cache.set(key, solution)
+  return { ...solution, report: structuredClone(solution.report) }
+}
+
+/** A persistent store can hand back anything; JSON, for one, turns typed arrays into plain objects. */
+function check({ skinIndices, skinWeights }: SkinSolution, vertices: number): void {
+  const intact = skinIndices instanceof Uint16Array && skinWeights instanceof Float32Array
+    && skinIndices.length === vertices * 4 && skinWeights.length === vertices * 4
+  if (!intact) throw new Error('the skin cache returned a broken entry; store values with structured clone (IndexedDB), not JSON')
 }
 
 /**
@@ -15,7 +41,7 @@ export interface SkinCache {
  * order and the world-space triangle soup. A collision would silently bind wrong weights, so this uses a
  * cryptographic hash rather than a short one; WebCrypto has it natively in Node and secure browser contexts.
  */
-export async function cacheKey(
+async function cacheKey(
   positions: Float32Array<ArrayBuffer>,
   indices: Uint32Array<ArrayBuffer>,
   skeleton: readonly SkeletonBone[],

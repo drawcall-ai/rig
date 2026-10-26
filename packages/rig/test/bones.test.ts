@@ -14,20 +14,33 @@ import { bones, type SkeletonBone } from '../src/index.js'
   assert.deepEqual(Object.keys(byName).sort(), ['head', 'hips', 'spine'])
   assert.ok(byName.spine.parent === byName.hips && byName.head.parent === byName.spine, 'linked by parent name')
   for (const entry of skeleton) {
-    assert.ok(byName[entry.name].getWorldPosition(new THREE.Vector3()).distanceTo(new THREE.Vector3(...entry.position)) < 1e-12, `${entry.name} at its position`)
+    const position = byName[entry.name].getWorldPosition(new THREE.Vector3())
+    assert.ok(position.distanceTo(new THREE.Vector3(...entry.position)) < 1e-12, `${entry.name} at its position`)
   }
   assert.deepEqual(byName.head.userData.pieces, [2])
   assert.notEqual(byName.head.userData.pieces, skeleton[1].pieces, 'pieces copied')
-  assert.throws(() => bones([...skeleton, { name: 'tail', position: [0, 1, -1] }]), /exactly one root, got 2/)
 }
 
-// Names are types: a parent must name a bone of the same skeleton, and byName has exactly its bones
+// A skeleton is one tree
+{
+  assert.throws(() => bones([
+    { name: 'hips', position: [0, 1, 0] },
+    { name: 'spine', parent: 'hips', position: [0, 1.2, 0] },
+    { name: 'tail', position: [0, 1, -1] },
+  ]), /exactly one root, got 2/)
+  assert.throws(() => bones([
+    { name: 'a', parent: 'b', position: [0, 0, 0] },
+    { name: 'b', parent: 'a', position: [0, 1, 0] },
+  ]), /cycle/)
+}
+
+// Names are types. The @ts-expect-error lines are enforced by `pnpm typecheck`.
 {
   const { byName } = bones([
     { name: 'hips', position: [0, 1, 0] },
     { name: 'spine', parent: 'hips', position: [0, 1.2, 0] },
   ])
-  byName.spine.rotation.x = 0.1
+  byName satisfies Record<'hips' | 'spine', THREE.Bone>
   // @ts-expect-error: no bone "tail" in this skeleton
   assert.equal(byName.tail, undefined)
   assert.throws(() => bones([
@@ -35,9 +48,11 @@ import { bones, type SkeletonBone } from '../src/index.js'
     // @ts-expect-error: parent typo
     { name: 'spine', parent: 'hip', position: [0, 1.2, 0] },
   ]), /unknown parent "hip"/)
+  // Names known only as strings: every lookup may miss
   const serialized: SkeletonBone[] = [{ name: 'a', position: [0, 0, 0] }, { name: 'b', parent: 'a', position: [0, 1, 0] }]
   const { byName: loose } = bones(serialized)
-  assert.ok(loose.b, 'a skeleton typed SkeletonBone[] keys byName by string')
+  // @ts-expect-error: possibly undefined
+  loose.b.rotation.x = 0.1
 }
 
 console.log('bones.test.ts passed')

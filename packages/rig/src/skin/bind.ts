@@ -4,8 +4,8 @@ import * as THREE from 'three'
 import { gather } from '../measure/soup.js'
 import { checkResolution } from '../measure/voxelize.js'
 import type { SkeletonBone } from './skeleton.js'
-import { computeWeights, type SkinReport, type SkinWeights } from './weights.js'
-import { cacheKey, type SkinCache } from './cache.js'
+import { computeWeights, type SkinReport } from './weights.js'
+import { cachedWeights, type SkinCache } from './cache.js'
 import { assertTRS, saveRest } from './rest.js'
 
 /**
@@ -74,28 +74,16 @@ export async function skin(object: THREE.Object3D, root: THREE.Bone, options: nu
 }
 
 export interface SkinOptions {
-  /** Voxels along the longest axis, as in section(). */
+  /** Voxels along the longest axis, as in section(); 128 by default. */
   resolution?: number
   /**
-   * Keeps solved weights by a hash of everything that determines them (geometry, bones, resolution, rig
-   * version): skinning the same input again skips the solve and gives identical weights.
+   * Keeps solved weights by a SHA-256 of everything that determines them (world-space geometry, bones,
+   * resolution, rig version): skinning the same input again skips the solve and gives identical weights.
+   * Hashing needs crypto.subtle: Node, or a page served over https or from localhost. A persistent store
+   * must keep values with structured clone (IndexedDB), not JSON. A workspace-linked dev build of rig has
+   * version 0.0.0, so clear a persistent cache after changing rig.
    */
   cache?: SkinCache
-}
-
-/** A hit returns exactly what the solve would; the report is copied so the caller cannot edit the cached one. */
-async function cachedWeights(
-  cache: SkinCache,
-  positions: Float32Array<ArrayBuffer>,
-  indices: Uint32Array<ArrayBuffer>,
-  skeleton: SkeletonBone[],
-  resolution: number,
-): Promise<SkinWeights> {
-  const key = await cacheKey(positions, indices, skeleton, resolution)
-  const hit = cache.get(key)
-  const weights = hit ?? await computeWeights(positions, indices, skeleton, resolution)
-  if (!hit) cache.set(key, weights)
-  return { ...weights, report: structuredClone(weights.report) }
 }
 
 /** The root gets no skeleton parent, even when attached under a bone of the old armature. */

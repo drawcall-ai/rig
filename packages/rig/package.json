@@ -34,7 +34,7 @@
     "skills"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=20.10"
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",

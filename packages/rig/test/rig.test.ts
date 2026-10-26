@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import * as THREE from 'three'
-import { bone, bones, pick, pieces, section, skin, type SkinWeights } from '../src/index.js'
+import { bone, bones, pick, pieces, section, skin, type SkinSolution } from '../src/index.js'
+import { gather } from '../src/measure/soup.js'
+import { solid } from '../src/measure/solid.js'
 import { solveSkinWeights } from '../src/skin/solve.js'
 import { useSolver } from '../src/skin/weights.js'
 import { pose } from '../src/pose.js'
@@ -291,8 +293,7 @@ import { makeCapsule } from './capsule.js'
   console.log('fully rigid rigs bind all pieces without voxelization and reject unassigned geometry')
 }
 
-// A cache hit skips the solve and binds exactly the weights a miss does; the key changes with the resolution.
-// The report measures the solid: the closed capsule's volume, high by less than one cell over its surface.
+// A cache hit skips the solve and binds exactly the weights a miss does; the key changes with the resolution
 {
   let solves = 0
   useSolver((input) => {
@@ -316,7 +317,7 @@ import { makeCapsule } from './capsule.js'
     scene.traverse((node) => node instanceof THREE.SkinnedMesh && meshes.push(node))
     return meshes.map((mesh) => [mesh.geometry.getAttribute('skinIndex').array, mesh.geometry.getAttribute('skinWeight').array])
   }
-  const cache = new Map<string, SkinWeights>()
+  const cache = new Map<string, SkinSolution>()
   const missed = model()
   const miss = await skin(missed, chain(), { resolution: 32, cache })
   const hitScene = model()
@@ -327,15 +328,26 @@ import { makeCapsule } from './capsule.js'
   await skin(model(), chain(), { resolution: 24, cache })
   assert.deepEqual([solves, cache.size], [2, 2], 'another resolution misses')
   useSolver(solveSkinWeights)
+  for (const [key, value] of cache) cache.set(key, JSON.parse(JSON.stringify(value)))
+  await assert.rejects(skin(model(), chain(), { resolution: 32, cache }), /the skin cache returned a broken entry; store values with structured clone/)
+  console.log('cache ok')
+}
 
+// The solid: exact volume of a closed mesh; open where solids share an edge; degenerate triangles cover nothing
+{
+  const soup = (...geometries: THREE.BufferGeometry[]) => gather(new THREE.Group().add(...geometries.map((geometry) => new THREE.Mesh(geometry))))
+  const capsule = makeCapsule()
+  const measured = solid(capsule.positions, capsule.indices)
   const exact = Math.PI * 0.3 ** 2 * 1.4 + (4 / 3) * Math.PI * 0.3 ** 3
-  const shell = (2 * Math.PI * 0.3 * 1.4 + 4 * Math.PI * 0.3 ** 2) * (2 / 32)
-  assert.ok(miss.closed, 'the capsule is closed')
-  assert.ok(miss.volume !== null && miss.volume > exact && miss.volume < exact + shell, `volume ${miss.volume}, exact ${exact}`)
-  const tube = new THREE.Group().add(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.8, 16, 4, true), new THREE.MeshBasicMaterial()))
-  const open = await skin(tube, chain(), 32)
-  assert.equal(open.closed, false, 'an open-ended tube is not')
-  console.log('cache ok; capsule volume', miss.volume, 'exact', exact)
+  assert.ok(measured.closed && measured.volume !== null && Math.abs(measured.volume - exact) < 0.01 * exact, `capsule volume ${measured.volume}, exact ${exact}`)
+  const box = soup(new THREE.BoxGeometry(1, 2, 3))
+  const boxSolid = solid(box.positions, box.indices)
+  assert.ok(boxSolid.closed && boxSolid.volume !== null && Math.abs(boxSolid.volume - 6) < 1e-6, `box volume ${boxSolid.volume}`)
+  const touching = soup(new THREE.BoxGeometry(1, 1, 1), new THREE.BoxGeometry(1, 1, 1).translate(1, 1, 0))
+  assert.deepEqual(solid(touching.positions, touching.indices), { closed: false, volume: null })
+  const degenerate = Uint32Array.from([...box.indices, box.indices[0], box.indices[0], box.indices[1]])
+  assert.deepEqual(solid(box.positions, degenerate), boxSolid)
+  console.log('solid ok')
 }
 
 await assert.rejects(skin(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()), bone('Root', [0, 0, 0])), /skin\(\) needs a container/)
