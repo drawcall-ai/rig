@@ -1,14 +1,17 @@
 /** skin(): binds a scene's meshes to a THREE.Bone tree with computed weights. */
 
 import * as THREE from 'three'
-import { gather } from '../measure/soup.js'
+import { gather, outward } from '../measure/soup.js'
 import { checkResolution } from '../measure/voxelize.js'
 import type { SkeletonBone } from './skeleton.js'
+import { boneTree } from '../bone.js'
 import { computeWeights, type SkinReport } from './weights.js'
 import { assertTRS, saveRest } from './rest.js'
 
 /**
- * Binds every mesh under a container `object` (such as a Scene or Group) to the bone tree under `root`:
+ * Binds every mesh under a container `object` (such as a Scene or Group) to a skeleton: either the bone
+ * tree under a root `THREE.Bone`, or the skeleton as data, built into bones as RigLoader does (find a bound
+ * bone afterwards with `object.getObjectByName`). Either way the bound bones are those very objects:
  * computes skin weights and replaces each mesh
  * with a THREE.SkinnedMesh at the scene root (vertices baked into that root's coordinates, preserving
  * the current world-space bind pose) and removes any previous armature. Attaches an unparented `root` under `object`, preserving its world-space joints. Resolution =
@@ -16,7 +19,12 @@ import { assertTRS, saveRest } from './rest.js'
  * describe what the solver found. Attachments requiring shear fail before reparenting; bake nonuniform
  * scale into the model first.
  */
-export async function skin(object: THREE.Object3D, root: THREE.Bone, resolution = 128): Promise<SkinReport> {
+export async function skin<Name extends string>(
+  object: THREE.Object3D,
+  skeleton: THREE.Bone | readonly SkeletonBone<Name>[],
+  resolution = 128,
+): Promise<SkinReport> {
+  const root = skeleton instanceof THREE.Bone ? skeleton : boneTree(skeleton)
   if (object instanceof THREE.Mesh) throw new Error('skin() needs a container: add the mesh to a Group or Scene first')
   if (object === root) throw new Error('skin() needs a model container separate from the root bone; use a Group or Scene')
   checkResolution(resolution, 'skin(scene, root, 256)')
@@ -40,7 +48,8 @@ export async function skin(object: THREE.Object3D, root: THREE.Bone, resolution 
   if (!root.parent) object.attach(root)
   root.updateWorldMatrix(true, true)
   const soup = gather(object)
-  const { skinIndices, skinWeights, report } = await computeWeights(soup.positions, soup.indices, bones.map((bone) => toSkeletonBone(bone, root)), resolution)
+  const worldSkeleton = bones.map((bone) => toSkeletonBone(bone, root))
+  const { skinIndices, skinWeights, report } = await computeWeights(soup.positions, soup.indices, worldSkeleton, resolution)
   const three = new THREE.Skeleton(bones)
   soup.meshes.forEach((mesh, m) => {
     const offset = soup.offsets[m]
@@ -120,7 +129,7 @@ function bakedGeometry(mesh: THREE.Mesh, worldToModel: THREE.Matrix4): THREE.Buf
   // A mirroring transform flips the winding once baked
   const index = geometry.getIndex()
   if (index && transform.determinant() < 0) {
-    const flipped = Array.from({ length: index.count }, (_, i) => index.getX(i - (i % 3) + [0, 2, 1][i % 3]))
+    const flipped = Array.from({ length: index.count }, (_, i) => index.getX(outward(i, true)))
     geometry.setIndex(flipped)
   }
   geometry.computeBoundingBox()

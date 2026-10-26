@@ -1,9 +1,9 @@
 import { Loader, SkinnedMesh, type Skeleton, type AnimationClip, type Group } from 'three'
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'meshoptimizer'
-import { bone } from './bone.js'
+import { boneTree } from './bone.js'
 import { skin } from './skin/bind.js'
-import { resolveSkeleton, type SkeletonBone } from './skin/skeleton.js'
+import type { SkeletonBone } from './skin/skeleton.js'
 import type { SkinReport } from './skin/weights.js'
 import { Resources } from './resources.js'
 import { requireTextures } from './gltf/textures.js'
@@ -61,24 +61,7 @@ export class RigLoader extends Loader<RigResult, RigRequest> {
     const url = String(request.url)
     const resolution = request.resolution ?? 128
     checkResolution(resolution, 'RigLoader resolution')
-    const definition = request.skeleton.map((entry) => ({
-      ...entry,
-      position: [...entry.position] satisfies [number, number, number],
-      pieces: entry.pieces?.slice(),
-    }))
-    const resolved = resolveSkeleton(definition)
-    const roots = resolved.filter((entry) => entry.parentIndex < 0)
-    if (roots.length !== 1) throw new Error(`RigLoader skeleton must have exactly one root, got ${roots.length}`)
-    const bones = definition.map((entry) => {
-      const result = bone(entry.name, entry.position)
-      if (entry.pieces) result.userData.pieces = entry.pieces
-      return result
-    })
-    resolved.forEach((entry, index) => {
-      if (entry.parentIndex >= 0) bones[entry.parentIndex].attach(bones[index])
-    })
-    const root = bones.find((entry) => entry.parent === null)
-    if (!root) throw new Error('RigLoader skeleton has no root')
+    const root = boneTree(request.skeleton)
     const source = await this.read(url, onProgress)
     const { scene } = source
     const resources = new Resources()

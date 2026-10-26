@@ -34,7 +34,38 @@ export function gather(object: THREE.Object3D): Soup {
     }
     const index = mesh.geometry.getIndex()
     const count = index ? index.count : position.count
-    for (let i = 0; i < count; i++) indices.push(offsets[m] + (index ? index.getX(i) : i))
+    const mirrored = mesh.matrixWorld.determinant() < 0
+    for (let i = 0; i < count; i++) {
+      const corner = outward(i, mirrored)
+      indices.push(offsets[m] + (index ? index.getX(corner) : corner))
+    }
   })
   return { meshes, offsets, positions, indices: new Uint32Array(indices) }
+}
+
+/**
+ * The index position to read for corner `i` of a triangle list: a mirroring transform turns triangles
+ * inside out, so under one the last two corners of each triangle swap to keep them facing outward.
+ */
+export function outward(i: number, mirrored: boolean): number {
+  return mirrored ? i - (i % 3) + [0, 2, 1][i % 3] : i
+}
+
+/**
+ * For each vertex, the first vertex at its position: seams split vertices that one surface shares.
+ * Positions match exactly, or, given a `step`, when they snap to the same point of a grid that fine
+ * (two points closer than `step` can still straddle a grid line).
+ */
+export function weld(positions: Float32Array, step = 0): Int32Array {
+  const count = positions.length / 3
+  const first = new Int32Array(count)
+  const byPosition = new Map<string, number>()
+  const snap = (value: number) => (step > 0 ? Math.round(value / step) : value)
+  for (let v = 0; v < count; v++) {
+    const key = `${snap(positions[v * 3])},${snap(positions[v * 3 + 1])},${snap(positions[v * 3 + 2])}`
+    const known = byPosition.get(key)
+    if (known === undefined) byPosition.set(key, v)
+    first[v] = known ?? v
+  }
+  return first
 }

@@ -4,6 +4,7 @@
  */
 
 import { meshPieces } from '../measure/pieces.js'
+import { solid } from '../measure/solid.js'
 import { cellAt, computeVoxelVolume, isInside, type VoxelVolume } from '../measure/voxelize.js'
 import { segmentDistanceSq, type Vec3 } from '../vec3.js'
 import { boneLength, boneLines, resolveSkeleton, type ResolvedBone, type SkeletonBone } from './skeleton.js'
@@ -27,6 +28,23 @@ export interface SkinReport {
   /** What the solver found that may need a change, one entry per cause. */
   warnings: string[]
   bones: BoneReport[]
+  /**
+   * Whether the mesh is watertight and consistently wound: after merging coincident vertices, every edge
+   * a -> b is used by exactly one triangle and b -> a by exactly one. Solids touching along an edge count as open.
+   */
+  closed: boolean
+  /**
+   * The enclosed volume in cubic world units (the model's own units under an unscaled container, as with
+   * RigLoader; m³ for a model in meters), exact for the triangles. Null when the mesh is not closed.
+   */
+  volume: number | null
+}
+
+/** What a solve gives skin(): weight slots index the skeleton's bones, four per vertex. */
+export interface SkinSolution {
+  skinIndices: Uint16Array<ArrayBuffer>
+  skinWeights: Float32Array<ArrayBuffer>
+  report: SkinReport
 }
 
 export type Solve = (input: SolveInput) => SolveResult | Promise<SolveResult>
@@ -51,10 +69,11 @@ const ORIENTATION_WEIGHT = 2
 export async function computeWeights(
   positions: Float32Array,
   indices: Uint32Array,
-  skeleton: SkeletonBone[],
+  skeleton: readonly SkeletonBone[],
   resolution: number,
-): Promise<{ skinIndices: Uint16Array<ArrayBuffer>; skinWeights: Float32Array<ArrayBuffer>; report: SkinReport }> {
+): Promise<SkinSolution> {
   const bones = resolveSkeleton(skeleton)
+  const { closed, volume } = solid(positions, indices)
   const lines = boneLines(bones)
   if (lines.length === 0) {
     const count = positions.length / 3
@@ -64,17 +83,18 @@ export async function computeWeights(
     if (pinned.size !== count) {
       throw new Error(`rigid skeleton leaves ${count - pinned.size} vertices unassigned; assign every model piece to a bone or add a deforming segment`)
     }
-    return { skinIndices, skinWeights, report: { warnings: [], bones: boneReports(bones, positions, skinIndices, skinWeights) } }
+    const reports = boneReports(bones, positions, skinIndices, skinWeights)
+    return { skinIndices, skinWeights, report: { warnings: [], bones: reports, closed, volume } }
   }
-  const volume = computeVoxelVolume(positions, indices, { resolution })
-  const { skinIndices, skinWeights } = await solver({ positions, volume, boneLines: lines, blurIterations: BLUR_ITERATIONS, orientationWeight: ORIENTATION_WEIGHT })
+  const voxels = computeVoxelVolume(positions, indices, { resolution })
+  const { skinIndices, skinWeights } = await solver({ positions, volume: voxels, boneLines: lines, blurIterations: BLUR_ITERATIONS, orientationWeight: ORIENTATION_WEIGHT })
   // Pieces first: their vertices are settled and must not count as unreached or bleeding
   const pinned = bindPieces(bones, positions, indices, skinIndices, skinWeights)
   const unreached = bindUnreached(positions, skinIndices, skinWeights, lines)
   const reports = boneReports(bones, positions, skinIndices, skinWeights)
-  bones.forEach((bone, index) => { if (bone.deform) reports[index].inside = insideFraction(volume, bone) })
-  const warnings = skinWarnings({ bones, lines, positions, volume, resolution, skinIndices, skinWeights, reports, pinned, unreached })
-  return { skinIndices, skinWeights, report: { warnings, bones: reports } }
+  bones.forEach((bone, index) => { if (bone.deform) reports[index].inside = insideFraction(voxels, bone) })
+  const warnings = skinWarnings({ bones, lines, positions, volume: voxels, resolution, skinIndices, skinWeights, reports, pinned, unreached })
+  return { skinIndices, skinWeights, report: { warnings, bones: reports, closed, volume } }
 }
 
 /** Vertices with all-zero weights get weight 1 on the nearest bone line. */
@@ -166,13 +186,13 @@ function boneReports(
 }
 
 /** Samples the segment at half-cell steps, like the solver's seeding. */
-function insideFraction(volume: VoxelVolume, bone: ResolvedBone): number {
+function insideFraction(voxels: VoxelVolume, bone: ResolvedBone): number {
   const { position: start, tail: end } = bone
-  const steps = Math.max(1, Math.ceil(boneLength(bone) / (volume.cellSize * 0.5)))
+  const steps = Math.max(1, Math.ceil(boneLength(bone) / (voxels.cellSize * 0.5)))
   let inside = 0
   for (let i = 0; i <= steps; i++) {
     const t = i / steps
-    if (isInside(volume, cellAt(volume, [0, 1, 2].map((a) => start[a] + (end[a] - start[a]) * t)))) inside++
+    if (isInside(voxels, cellAt(voxels, [0, 1, 2].map((a) => start[a] + (end[a] - start[a]) * t)))) inside++
   }
   return inside / (steps + 1)
 }

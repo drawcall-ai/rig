@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import * as THREE from 'three'
 import { bone, pick, pieces, section, skin } from '../src/index.js'
+import { gather } from '../src/measure/soup.js'
+import { solid } from '../src/measure/solid.js'
 import { pose } from '../src/pose.js'
 import { weights } from '../src/weights.js'
 import { makeCapsule } from './capsule.js'
@@ -119,6 +121,7 @@ import { makeCapsule } from './capsule.js'
   const suggested = Number(hint[1].split(',')[1])
   const fixed = await skin(tube(), rig(suggested), 64)
   assert.deepEqual(fixed.warnings, [], 'following the suggestion clears the warning')
+  assert.ok(fixed.closed, 'welded across its UV seam, the capped cylinder is closed')
   // On a coarse grid a bone without vertices and without a ring gap gets the grouped warning with sizes in voxels
   const coarse = await skin(tube(), rig(1.1), 16)
   assert.ok(
@@ -286,6 +289,47 @@ import { makeCapsule } from './capsule.js'
   bone('arm', [2, 0, 0], duplicate).userData.pieces = [1]
   await assert.rejects(skin(model(), duplicate), /piece 1 is assigned to both "body" and "arm"/)
   console.log('fully rigid rigs bind all pieces without voxelization and reject unassigned geometry')
+}
+
+// A skeleton given as data is built and bound as RigLoader does; three's own lookup finds the bound bones
+{
+  const capsule = makeCapsule()
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(capsule.positions, 3))
+  geometry.setIndex(new THREE.BufferAttribute(capsule.indices, 1))
+  const model = new THREE.Group().add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial()))
+  await skin(model, [
+    { name: 'low', position: [0, -0.9, 0] },
+    { name: 'high', parent: 'low', position: [0, 0, 0] },
+    { name: 'tip', parent: 'high', position: [0, 0.9, 0] },
+  ], 32)
+  const high = model.getObjectByName('high')
+  let bound: THREE.SkinnedMesh | undefined
+  model.traverse((node) => { if (node instanceof THREE.SkinnedMesh) bound = node })
+  assert.ok(high instanceof THREE.Bone && bound?.skeleton.bones.includes(high), 'the bone found by name is the bound one')
+  console.log('skeleton data ok')
+}
+
+// The solid: exact volume of a closed mesh; open where solids share an edge; degenerate triangles cover nothing
+{
+  const soup = (...geometries: THREE.BufferGeometry[]) => gather(new THREE.Group().add(...geometries.map((geometry) => new THREE.Mesh(geometry))))
+  const capsule = makeCapsule()
+  const measured = solid(capsule.positions, capsule.indices)
+  const exact = Math.PI * 0.3 ** 2 * 1.4 + (4 / 3) * Math.PI * 0.3 ** 3
+  assert.ok(measured.closed && measured.volume !== null && Math.abs(measured.volume - exact) < 0.01 * exact, `capsule volume ${measured.volume}, exact ${exact}`)
+  const box = soup(new THREE.BoxGeometry(1, 2, 3))
+  const boxSolid = solid(box.positions, box.indices)
+  assert.ok(boxSolid.closed && boxSolid.volume !== null && Math.abs(boxSolid.volume - 6) < 1e-6, `box volume ${boxSolid.volume}`)
+  const touching = soup(new THREE.BoxGeometry(1, 1, 1), new THREE.BoxGeometry(1, 1, 1).translate(1, 1, 0))
+  assert.deepEqual(solid(touching.positions, touching.indices), { closed: false, volume: null })
+  const mirrored = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1))
+  mirrored.scale.x = -1
+  mirrored.position.x = 3
+  const pair = gather(new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1)), mirrored))
+  assert.deepEqual(solid(pair.positions, pair.indices), { closed: true, volume: 2 }, 'a mirrored copy adds its volume')
+  const degenerate = Uint32Array.from([...box.indices, box.indices[0], box.indices[0], box.indices[1]])
+  assert.deepEqual(solid(box.positions, degenerate), boxSolid)
+  console.log('solid ok')
 }
 
 await assert.rejects(skin(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()), bone('Root', [0, 0, 0])), /skin\(\) needs a container/)

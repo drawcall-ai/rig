@@ -6,7 +6,7 @@
 
 import type * as THREE from 'three'
 import type { Vec3 } from '../vec3.js'
-import { gather } from './soup.js'
+import { gather, weld } from './soup.js'
 
 export interface Piece {
   /** Index to use in bone.userData.pieces. */
@@ -81,13 +81,7 @@ function connect(positions: Float32Array, indices: Uint32Array): Int32Array {
   const union = (a: number, b: number): void => {
     parent[find(a)] = find(b)
   }
-  const byPosition = new Map<string, number>()
-  for (let v = 0; v < count; v++) {
-    const key = `${positions[v * 3]},${positions[v * 3 + 1]},${positions[v * 3 + 2]}`
-    const first = byPosition.get(key)
-    if (first === undefined) byPosition.set(key, v)
-    else union(v, first)
-  }
+  weld(positions).forEach((first, v) => union(v, first))
   for (let t = 0; t < indices.length; t += 3) {
     union(indices[t], indices[t + 1])
     union(indices[t], indices[t + 2])
