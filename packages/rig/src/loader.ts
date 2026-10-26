@@ -1,7 +1,7 @@
 import { Loader, SkinnedMesh, type Skeleton, type AnimationClip, type Group } from 'three'
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'meshoptimizer'
-import { bones } from './bone.js'
+import { boneTree } from './bone.js'
 import { skin } from './skin/bind.js'
 import type { SkeletonBone } from './skin/skeleton.js'
 import type { SkinReport } from './skin/weights.js'
@@ -61,7 +61,7 @@ export class RigLoader extends Loader<RigResult, RigRequest> {
     const url = String(request.url)
     const resolution = request.resolution ?? 128
     checkResolution(resolution, 'RigLoader resolution')
-    const root = bones(request.skeleton)
+    const root = boneTree(request.skeleton)
     const source = await this.read(url, onProgress)
     const { scene } = source
     const resources = new Resources()

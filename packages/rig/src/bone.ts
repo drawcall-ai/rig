@@ -17,10 +17,9 @@ export function bone(name: string, world: Vec3, parent?: THREE.Bone): THREE.Bone
 /**
  * The root of the bone tree a serialized skeleton describes, ready for skin(): one bone() per entry at its
  * absolute position, linked by parent name, with a copy of its `pieces` in `userData.pieces`. Validates the
- * skeleton as skin() does and requires exactly one root. After skin(), find a bone with three's own
- * `getObjectByName` or `skeleton.getBoneByName`.
+ * skeleton as skin() does and requires exactly one root. skin() and RigLoader build bones from data with it.
  */
-export function bones<Name extends string>(skeleton: readonly SkeletonBone<Name>[]): THREE.Bone {
+export function boneTree<Name extends string>(skeleton: readonly SkeletonBone<Name>[]): THREE.Bone {
   const resolved = resolveSkeleton(skeleton)
   const roots = resolved.filter((entry) => entry.parentIndex < 0)
   if (roots.length !== 1) throw new Error(`skeleton must have exactly one root, got ${roots.length}`)

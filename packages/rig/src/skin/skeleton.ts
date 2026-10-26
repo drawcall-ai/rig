@@ -9,7 +9,7 @@ import { MAX_BONES_PER_SOLVE, type BoneLine } from './solve.js'
 
 /**
  * One bone of a skeleton. `Name` is the union of the skeleton's bone names: write the skeleton `as const`
- * (or pass it straight to bones()) to keep them, so a parent naming no bone of the skeleton is a type error.
+ * (or pass it straight to skin()) to keep them, so a parent naming no bone of the skeleton is a type error.
  */
 export interface SkeletonBone<Name extends string = string> {
   readonly name: Name

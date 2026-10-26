@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import * as THREE from 'three'
-import { bone, bones, pick, pieces, section, skin, type SkinSolution } from '../src/index.js'
+import { bone, pick, pieces, section, skin, type SkinSolution } from '../src/index.js'
 import { gather } from '../src/measure/soup.js'
 import { solid } from '../src/measure/solid.js'
 import { solveSkinWeights } from '../src/skin/solve.js'
@@ -307,11 +307,11 @@ import { makeCapsule } from './capsule.js'
     geometry.setIndex(new THREE.BufferAttribute(capsule.indices, 1))
     return new THREE.Group().add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial()))
   }
-  const chain = () => bones([
+  const chain = () => ([
     { name: 'low', position: [0, -0.9, 0] },
     { name: 'high', parent: 'low', position: [0, 0, 0] },
     { name: 'tip', parent: 'high', position: [0, 0.9, 0] },
-  ])
+  ] as const)   // passed to skin() as data
   const bound = (scene: THREE.Object3D) => {
     const meshes: THREE.SkinnedMesh[] = []
     scene.traverse((node) => node instanceof THREE.SkinnedMesh && meshes.push(node))

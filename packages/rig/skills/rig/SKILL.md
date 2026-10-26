@@ -50,7 +50,7 @@ if (isPreview) {
 }
 ```
 
-Use `RigLoader` when the asset loads its own model. When the model is already in hand, such as a procedural mesh or a model an app loaded, skin it directly: build its bones with `bones()` when the skeleton is one data list shared with other code (such as an animation library), and with `bone()` when joints are built in code. Rebuild from the original model on each iteration: re-skinning the previous result compounds its deformation.
+Use `RigLoader` when the asset loads its own model. When the model is already in hand, such as a procedural mesh or a model an app loaded, skin it directly: pass the skeleton list straight to `skin()` when it is one data list shared with other code (such as an animation library), and build bones with `bone()` when joints are built in code. The bound bones are the ones `skin()` built or received: find one with the model's `getObjectByName`. Rebuild from the original model on each iteration: re-skinning the previous result compounds its deformation.
 
 Skinning reads joints and mesh in world space. Skin the model unscaled at the origin, then place it: a model moved first no longer matches a skeleton measured in model coordinates.
 
