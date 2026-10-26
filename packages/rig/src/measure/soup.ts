@@ -34,14 +34,21 @@ export function gather(object: THREE.Object3D): Soup {
     }
     const index = mesh.geometry.getIndex()
     const count = index ? index.count : position.count
-    // A mirroring transform turns the triangles inside out; swapping two corners keeps them facing outward
-    const corners = mesh.matrixWorld.determinant() < 0 ? [0, 2, 1] : [0, 1, 2]
+    const mirrored = mesh.matrixWorld.determinant() < 0
     for (let i = 0; i < count; i++) {
-      const corner = i - (i % 3) + corners[i % 3]
+      const corner = outward(i, mirrored)
       indices.push(offsets[m] + (index ? index.getX(corner) : corner))
     }
   })
   return { meshes, offsets, positions, indices: new Uint32Array(indices) }
+}
+
+/**
+ * The index position to read for corner `i` of a triangle list: a mirroring transform turns triangles
+ * inside out, so under one the last two corners of each triangle swap to keep them facing outward.
+ */
+export function outward(i: number, mirrored: boolean): number {
+  return mirrored ? i - (i % 3) + [0, 2, 1][i % 3] : i
 }
 
 /**

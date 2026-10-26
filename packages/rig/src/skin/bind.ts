@@ -1,7 +1,7 @@
 /** skin(): binds a scene's meshes to a THREE.Bone tree with computed weights. */
 
 import * as THREE from 'three'
-import { gather } from '../measure/soup.js'
+import { gather, outward } from '../measure/soup.js'
 import { checkResolution } from '../measure/voxelize.js'
 import type { SkeletonBone } from './skeleton.js'
 import { computeWeights, type SkinReport } from './weights.js'
@@ -138,7 +138,7 @@ function bakedGeometry(mesh: THREE.Mesh, worldToModel: THREE.Matrix4): THREE.Buf
   // A mirroring transform flips the winding once baked
   const index = geometry.getIndex()
   if (index && transform.determinant() < 0) {
-    const flipped = Array.from({ length: index.count }, (_, i) => index.getX(i - (i % 3) + [0, 2, 1][i % 3]))
+    const flipped = Array.from({ length: index.count }, (_, i) => index.getX(outward(i, true)))
     geometry.setIndex(flipped)
   }
   geometry.computeBoundingBox()
