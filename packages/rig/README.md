@@ -26,6 +26,8 @@ Install `@drawcall/rig @drawcall/glts three`. Use the packaged [rig skill](skill
 
 Skinning uses WebAssembly in workers. To enable parallel computation in browsers, serve over HTTPS (or localhost) with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. Pages without shared-memory support use the same solver in one worker. Node.js enables parallel computation automatically.
 
+If you use a Content-Security-Policy, permit the worker URLs in `worker-src` and allow WebAssembly compilation with `'wasm-unsafe-eval'` in any `script-src` policy applied to the workers. See [CSP and WebAssembly](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src#unsafe_webassembly_execution).
+
 ```sh
 npx drawcall glts render character.glts -o preview.png
 npx drawcall glts export character.glts -o character.rigged.glb
