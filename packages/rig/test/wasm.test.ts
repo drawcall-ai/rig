@@ -15,21 +15,20 @@ function fixture(dimensions: [number, number, number] = [5, 4, 3]): PreparedSolv
   const insideIndices = Uint32Array.from(Array.from(isInsideFlat).flatMap((value, i) => value ? [i] : []))
   const flatToLocal = new Uint32Array(cells)
   insideIndices.forEach((flat, local) => { flatToLocal[flat] = local })
-  const buffers = (): WeightBuffers => ({
+  const initial: WeightBuffers = {
     bones: new Uint8Array(insideIndices.length * 4),
     weights: new Float32Array(insideIndices.length * 4),
     count: new Uint8Array(insideIndices.length),
-  })
-  const a = buffers(), b = buffers()
+  }
   for (let local = 0; local < insideIndices.length; local++) {
     const count = local % 4 + 1
-    a.count[local] = count
+    initial.count[local] = count
     for (let slot = 0; slot < count; slot++) {
-      a.bones[local * 4 + slot] = (local * 17 + slot * 37) % 256
-      a.weights[local * 4 + slot] = (slot + 1) / (count * (count + 1) / 2)
+      initial.bones[local * 4 + slot] = (local * 17 + slot * 37) % 256
+      initial.weights[local * 4 + slot] = (slot + 1) / (count * (count + 1) / 2)
     }
   }
-  return { grid: { dimensions, isInsideFlat, insideIndices, flatToLocal }, a, b }
+  return { grid: { dimensions, isInsideFlat, insideIndices, flatToLocal }, initial }
 }
 
 function hash(weights: WeightBuffers): string {

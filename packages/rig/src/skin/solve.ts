@@ -73,9 +73,8 @@ export interface BlurGrid {
 
 export interface PreparedSolve {
   grid: BlurGrid
-  /** Ping-pong weight buffers; a starts as the hard assignment. */
-  a: WeightBuffers
-  b: WeightBuffers
+  /** Hard assignment before diffusion. */
+  initial: WeightBuffers
 }
 
 export async function solveSkinWeights(input: SolveInput): Promise<SolveResult> {
@@ -85,7 +84,7 @@ export async function solveSkinWeights(input: SolveInput): Promise<SolveResult> 
 
 /**
  * Geodesic BFS per bone -> orientation-penalized closest bone per inside voxel,
- * written into buffer a as the blur's starting point.
+ * as the blur's starting point.
  */
 function prepareSolve(input: SolveInput): PreparedSolve {
   const { volume, boneLines } = input
@@ -249,25 +248,22 @@ function prepareSolve(input: SolveInput): PreparedSolve {
     }
   }
 
-  const buffers = (): WeightBuffers => ({
+  const initial: WeightBuffers = {
     bones: new Uint8Array(numInside * MAX_INFLUENCES),
     weights: new Float32Array(numInside * MAX_INFLUENCES),
     count: new Uint8Array(numInside),
-  })
-  const a = buffers()
-  const b = buffers()
+  }
   // Sparse top-4 weights, initialized from the hard assignment
   for (let local = 0; local < numInside; local++) {
     if (bestBone[local] >= 0) {
-      a.bones[local * MAX_INFLUENCES] = bestBone[local]
-      a.weights[local * MAX_INFLUENCES] = 1
-      a.count[local] = 1
+      initial.bones[local * MAX_INFLUENCES] = bestBone[local]
+      initial.weights[local * MAX_INFLUENCES] = 1
+      initial.count[local] = 1
     }
   }
   return {
     grid: { dimensions: volume.dimensions, isInsideFlat, insideIndices, flatToLocal },
-    a,
-    b,
+    initial,
   }
 }
 

@@ -5,7 +5,7 @@ import { prepare } from './wasm/prepare.js'
 import { run, type Task } from './wasm/run.js'
 
 export async function blur(prepared: PreparedSolve, cap: number): Promise<WeightBuffers> {
-  if (cap === 0 || prepared.grid.insideIndices.length === 0) return prepared.a
+  if (cap === 0 || prepared.grid.insideIndices.length === 0) return prepared.initial
   // Small volumes cannot amortize worker startup. Bound the team to avoid oversubscription.
   const count = typeof SharedArrayBuffer === 'undefined' ? 1
     : Math.min(4, parallelism(), Math.max(1, Math.ceil(prepared.grid.insideIndices.length / 16384)))
