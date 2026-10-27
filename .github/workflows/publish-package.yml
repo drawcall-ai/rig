@@ -45,14 +45,11 @@ jobs:
         id: gitversion
         uses: gittools/actions/gitversion/execute@v0
 
+      - name: Build and test
+        run: pnpm --filter "./packages/*" test
+
       - name: Typecheck
         run: pnpm --filter "./packages/*" typecheck
-
-      - name: Build
-        run: pnpm --filter "./packages/*" build
-
-      - name: Test
-        run: pnpm --filter "./packages/*" test
 
       - name: Set package version
         working-directory: ./packages/rig

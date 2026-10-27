@@ -32,11 +32,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build and test
+        run: pnpm --filter "./packages/*" test
+
       - name: Typecheck
         run: pnpm --filter "./packages/*" typecheck
-
-      - name: Test
-        run: pnpm --filter "./packages/*" test
 
   # musl: Alpine containers, as agent sandboxes often are
   test-alpine:
