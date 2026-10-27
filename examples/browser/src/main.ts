@@ -8,8 +8,6 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { gallop } from './gallop.js'
 import { flap, grip, swim, walk, type Motion } from './motions.js'
-import horseUrl from '../../node/horse.glts?url'
-import horseModelUrl from '../../node/horse.glb?url'
 
 interface Tab {
   name: string
@@ -21,7 +19,7 @@ interface Tab {
 
 const forward = (x: number, z: number) => new THREE.Vector3(x, 0, z)
 const tabs: Tab[] = [
-  { name: 'Horse', url: horseUrl, motion: (_, root) => gallop(root) },
+  { name: 'Horse', url: '/rigs/horse.glts', motion: (_, root) => gallop(root) },
   { name: 'Parrot', url: '/rigs/parrot.glts', motion: (b) => flap(b, forward(0, 1)) },
   { name: 'Stork', url: '/rigs/stork.glts', motion: (b) => flap(b, forward(0, 1)) },
   { name: 'Fish', url: '/rigs/fish.glts', motion: (b) => swim(b) },
@@ -61,7 +59,6 @@ function select(id: string): HTMLSelectElement {
 }
 
 const manager = new THREE.LoadingManager()
-manager.setURLModifier((url) => new URL(url, location.href).pathname.endsWith('/horse.glb') ? horseModelUrl : url)
 const loader = new GLTSLoader(manager, { isPreview: true, modules: { '@drawcall/rig': rig } })
 const view = element('view')
 const status = element('status')

@@ -3,12 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "render": "glts render horse.glts -o horse.check.png",
-    "render:debug": "glts render horse.debug.glts -o horse.debug.png",
-    "export": "glts export horse.glts -o horse.skinned.glb"
+    "render": "cd ../browser && glts render public/rigs/horse.glts -o ../node/horse.check.png",
+    "render:debug": "cd ../browser && glts render ../node/horse.debug.glts -o ../node/horse.debug.png",
+    "export": "cd ../browser && glts export public/rigs/horse.glts -o ../node/horse.skinned.glb"
   },
   "dependencies": {
-    "@drawcall/glts": "^1.0.0",
+    "@drawcall/glts": "^2.0.0",
     "@drawcall/rig": "workspace:*",
     "three": "^0.186.1"
   }

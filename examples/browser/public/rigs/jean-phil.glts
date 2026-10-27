@@ -1,8 +1,9 @@
 import * as THREE from 'three'
 import { RigLoader } from '@drawcall/rig'
-import { isPreview, loadingManager, onDispose, scene } from '@drawcall/glts'
+import { getGLTSSource, isPreview, loadingManager, onDispose, scene } from '@drawcall/glts'
 
 const rig = await new RigLoader(loadingManager).loadAsync({
+  source: getGLTSSource(),
   url: '/jean-phil.glb',
   skeleton: [
     {"name": "Hips", "position": [-0.005, -0.04, 0]},

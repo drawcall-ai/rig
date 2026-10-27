@@ -30,7 +30,9 @@ export function assertTRS(matrix: Matrix4, context: string): void {
   const scale = new Vector3()
   matrix.decompose(position, quaternion, scale)
   const recomposed = new Matrix4().compose(position, quaternion, scale)
-  if (!elements.every((value, index) => close(value, recomposed.elements[index]))) {
+  // Exported transforms accumulate small errors through hierarchies; compare each basis at its own scale.
+  const scales = [scale.x, scale.y, scale.z, 1]
+  if (!elements.every((value, index) => Math.abs(value - recomposed.elements[index]) <= 1e-5 * Math.abs(scales[Math.floor(index / 4)]))) {
     throw new Error(`${context}; expected an invertible affine local transform without shear`)
   }
 }

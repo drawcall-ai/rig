@@ -135,8 +135,27 @@ invalid.userData.rigBindMatrix = [1, 2, 3]
 assert.throws(() => pose(copy, {}), /invalid rigBindMatrix/)
 invalid.userData.rigBindMatrix = new Array(16).fill(0)
 assert.throws(() => pose(copy, {}), /invertible affine local transform/)
-invalid.userData.rigBindMatrix = new THREE.Matrix4().set(1, 0.5, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1).toArray()
-assert.throws(() => pose(copy, {}), /without shear/)
+for (const scale of [1, 1e8]) {
+  invalid.userData.rigBindMatrix = new THREE.Matrix4().set(scale, 0.5, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1).toArray()
+  assert.throws(() => pose(copy, {}), /without shear/, 'a large axis must not hide shear on a small axis')
+}
+
+// Exported scales and float32 quaternions have small errors; reparenting markers must tolerate that drift.
+const imported = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()))
+const armature = new THREE.Bone()
+armature.scale.set(100, 100.00018, 100.00156)
+armature.quaternion.set(-0.7137091755867, 0.00102141441311687, -0.000962936959695071, 0.700440764427185)
+const marker = new THREE.Object3D()
+marker.position.set(0, 1, 0)
+marker.rotation.x = 0.7
+armature.add(marker)
+imported.add(armature)
+const markerPosition = marker.getWorldPosition(new THREE.Vector3())
+const markerMatrix = marker.matrixWorld.clone()
+await skin(imported, [{ name: 'body', position: [0, 0, 0], pieces: [0] }], 16)
+assert.equal(marker.parent, imported, 'imported markers survive armature replacement')
+assert.ok(marker.getWorldPosition(new THREE.Vector3()).distanceTo(markerPosition) < 1e-6)
+assert.ok(marker.matrixWorld.elements.every((value, index) => Math.abs(value - markerMatrix.elements[index]) < 0.001), 'marker orientation and scale stay within export precision')
 
 const sheared = new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial()))
 sheared.rotation.z = Math.PI / 4

@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { gltsLoader, isPreview, onDispose, scene } from '@drawcall/glts'
 import { weights } from '@drawcall/rig'
 
-const horse = await gltsLoader.loadAsync('./horse.glts')
+const horse = await gltsLoader.loadAsync('../browser/public/rigs/horse.glts')
 scene.add(horse)
 
 if (isPreview) {

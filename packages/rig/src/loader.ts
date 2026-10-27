@@ -2,7 +2,8 @@ import { Loader, SkinnedMesh, type Skeleton, type AnimationClip, type Group } fr
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'meshoptimizer'
 import { boneTree } from './bone.js'
-import { skin } from './skin/bind.js'
+import { bind } from './skin/bind.js'
+import { cachedWeights, type RigSource } from './skin/cache.js'
 import type { SkeletonBone } from './skin/skeleton.js'
 import type { SkinReport } from './skin/weights.js'
 import { Resources } from './resources.js'
@@ -15,6 +16,8 @@ export interface RigRequest {
   skeleton: readonly SkeletonBone[]
   /** Voxels along the longest model axis. */
   resolution?: number
+  /** Enables persistent caching; pass a loaded GLTS scene's source, or getGLTSSource() inside a script. */
+  source?: RigSource
 }
 
 export interface RigResult {
@@ -60,6 +63,11 @@ export class RigLoader extends Loader<RigResult, RigRequest> {
   private async rig(request: RigRequest, onProgress?: (event: ProgressEvent) => void): Promise<RigResult> {
     const url = String(request.url)
     const resolution = request.resolution ?? 128
+    const metadata = request.source
+    const fetchOptions: RequestInit = {
+      credentials: this.withCredentials ? 'include' : 'same-origin',
+      headers: { ...this.requestHeader },
+    }
     checkResolution(resolution, 'RigLoader resolution')
     const root = boneTree(request.skeleton)
     const source = await this.read(url, onProgress)
@@ -67,7 +75,8 @@ export class RigLoader extends Loader<RigResult, RigRequest> {
     const resources = new Resources()
     source.scenes.forEach((entry) => resources.collect(entry))
     try {
-      const report = await skin(scene, root, resolution)
+      const solve = metadata ? cachedWeights(metadata, fetchOptions) : undefined
+      const report = await bind(scene, root, resolution, solve)
       resources.collect(scene)
       let skeleton: Skeleton | undefined
       scene.traverse((entry) => {

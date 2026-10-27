@@ -44,22 +44,23 @@
     "skills"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=20.19.0"
   },
   "scripts": {
     "build": "node scripts/build-wasm.mjs --check && node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "pnpm build && tsx test/wasm.test.ts && tsx test/worker.test.ts && tsx test/bind-snapshot.test.ts && tsx test/parity.test.ts && tsx test/rig.test.ts && tsx test/skeleton.test.ts && tsx test/loader.test.ts && tsx test/glts.test.ts && tsx test/pose.test.ts",
+    "test": "pnpm build && tsx test/wasm.test.ts && tsx test/worker.test.ts && tsx test/bind-snapshot.test.ts && tsx test/parity.test.ts && tsx test/rig.test.ts && tsx test/skeleton.test.ts && tsx test/loader.test.ts && tsx test/cache.test.ts && tsx test/glts.test.ts && tsx test/pose.test.ts",
     "bench": "tsx scripts/bench.ts",
     "prepack": "pnpm build",
     "build:wasm": "node scripts/build-wasm.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.9",
-    "meshoptimizer": "^1.3.0"
+    "meshoptimizer": "^1.3.0",
+    "vitecache": "^0.1.1"
   },
   "devDependencies": {
-    "@drawcall/glts": "^1.0.0",
+    "@drawcall/glts": "^2.0.0",
     "@types/node": "^22.19.3",
     "@types/three": "^0.186.0",
     "three": "^0.186.1",

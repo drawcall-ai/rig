@@ -8,4 +8,5 @@ examples/browser/public/*
 !examples/browser/public/rigs/
 examples/browser/public/rigs/*
 !examples/browser/public/rigs/*.glts
+!examples/browser/public/rigs/horse.glb
 .env

@@ -27,6 +27,16 @@ export async function skin<Name extends string>(
   resolution = 128,
 ): Promise<SkinReport> {
   const root = skeleton instanceof THREE.Bone ? skeleton : boneTree(skeleton)
+  return bind(object, root, resolution)
+}
+
+/** Shares scene preparation and binding between direct skinning and the loader's cached solve. */
+export async function bind(
+  object: THREE.Object3D,
+  root: THREE.Bone,
+  resolution: number,
+  solve = computeWeights,
+): Promise<SkinReport> {
   if (object instanceof THREE.Mesh) throw new Error('skin() needs a container: add the mesh to a Group or Scene first')
   if (object === root) throw new Error('skin() needs a model container separate from the root bone; use a Group or Scene')
   checkResolution(resolution, 'skin(scene, root, 256)')
@@ -71,7 +81,7 @@ export async function skin<Name extends string>(
       if (mesh.morphTargetDictionary) bound.morphTargetDictionary = { ...mesh.morphTargetDictionary }
       return { mesh, bound, offset, count }
     })
-    const { skinIndices, skinWeights, report } = await computeWeights(soup.positions, soup.indices, worldSkeleton, resolution)
+    const { skinIndices, skinWeights, report } = await solve(soup.positions, soup.indices, worldSkeleton, resolution)
     // Animation can continue during the solve; reparent only transforms that still fit Three's TRS.
     object.updateWorldMatrix(true, true)
     const currentWorldToModel = object.matrixWorld.clone().invert()
