@@ -8,7 +8,7 @@ import { Bone, LoadingManager, MeshBasicMaterial, SkeletonHelper, SkinnedMesh } 
 import * as rig from '../dist/node.js'
 
 const directory = await mkdtemp(join(tmpdir(), 'rig-glts-'))
-const loader = new GLTSLoader(new LoadingManager(), { modules: { '@drawcall/rig': rig } })
+const loader = new GLTSLoader(new LoadingManager(), { resolve: import.meta.resolve })
 try {
   const model = new URL('./fixtures/fox.glb', import.meta.url).href
   const file = join(directory, 'fox.glts')

@@ -8,8 +8,8 @@
     "export": "glts export horse.glts -o horse.skinned.glb"
   },
   "dependencies": {
+    "@drawcall/glts": "^1.0.0",
     "@drawcall/rig": "workspace:*",
-    "three": "^0.186.1",
-    "@drawcall/glts": "^0.19.0"
+    "three": "^0.186.1"
   }
 }

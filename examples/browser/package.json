@@ -8,9 +8,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@drawcall/glts": "^1.0.0",
     "@drawcall/rig": "workspace:*",
-    "three": "^0.186.1",
-    "@drawcall/glts": "^0.19.0"
+    "three": "^0.186.1"
   },
   "devDependencies": {
     "@types/three": "^0.186.0",
