@@ -50,7 +50,7 @@ for (const config of configs) {
   })
   const reference = computeSkinWeights(mesh.positions, volume, assignment)
 
-  const solved = solveSkinWeights({
+  const solved = await solveSkinWeights({
     positions: mesh.positions,
     volume,
     boneLines: bones,

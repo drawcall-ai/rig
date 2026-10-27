@@ -57,12 +57,12 @@ const ORIENTATION_WEIGHT = 2
  * deforming segments use voxel weights.
  * Weight slots index `skeleton`.
  */
-export function computeWeights(
+export async function computeWeights(
   positions: Float32Array,
   indices: Uint32Array,
   skeleton: readonly SkeletonBone[],
   resolution: number,
-): SkinSolution {
+): Promise<SkinSolution> {
   const bones = resolveSkeleton(skeleton)
   const { closed, volume } = solid(positions, indices)
   const lines = boneLines(bones)
@@ -78,7 +78,7 @@ export function computeWeights(
     return { skinIndices, skinWeights, report: { warnings: [], bones: reports, closed, volume } }
   }
   const voxels = computeVoxelVolume(positions, indices, { resolution })
-  const { skinIndices, skinWeights } = solveSkinWeights({ positions, volume: voxels, boneLines: lines, blurIterations: BLUR_ITERATIONS, orientationWeight: ORIENTATION_WEIGHT })
+  const { skinIndices, skinWeights } = await solveSkinWeights({ positions, volume: voxels, boneLines: lines, blurIterations: BLUR_ITERATIONS, orientationWeight: ORIENTATION_WEIGHT })
   // Pieces first: their vertices are settled and must not count as unreached or bleeding
   const pinned = bindPieces(bones, positions, indices, skinIndices, skinWeights)
   const unreached = bindUnreached(positions, skinIndices, skinWeights, lines)

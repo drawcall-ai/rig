@@ -9,13 +9,15 @@ export interface Job {
   resolution: number
 }
 
-export interface Callbacks {
-  result(value: SkinSolution): void
+export interface Callbacks<T> {
+  result(value: T): void
   error(error: Error): void
 }
 
-export interface WorkerHandle {
-  postMessage(job: Job, transfer: ArrayBuffer[]): void
+export type Reply<T> = { result: T } | { error: Error }
+
+export interface WorkerHandle<T> {
+  postMessage(job: T, transfer: ArrayBuffer[]): void
   terminate(): void | Promise<number>
 }
 
@@ -26,7 +28,7 @@ export async function computeWeights(
   skeleton: readonly SkeletonBone[],
   resolution: number,
 ): Promise<SkinSolution> {
-  let worker: WorkerHandle | undefined
+  let worker: WorkerHandle<Job> | undefined
   try {
     return await new Promise<SkinSolution>((resolve, reject) => {
       worker = createWorker({ result: resolve, error: reject })

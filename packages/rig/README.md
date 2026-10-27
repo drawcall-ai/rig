@@ -24,6 +24,8 @@ console.log(rig.report)
 
 Install `@drawcall/rig @drawcall/glts three`. Use the packaged [rig skill](skills/rig/SKILL.md) for the measurement, skeleton, and deformation workflow, and the [glts skill](https://github.com/drawcall-ai/glts/blob/main/packages/glts/skills/glts/SKILL.md) for rendering and export. Skills ship with their packages under `skills/`.
 
+Skinning uses WebAssembly in workers. To enable parallel computation in browsers, serve over HTTPS (or localhost) with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. Pages without shared-memory support use the same solver in one worker. Node.js enables parallel computation automatically.
+
 ```sh
 npx drawcall glts render character.glts -o preview.png
 npx drawcall glts export character.glts -o character.rigged.glb

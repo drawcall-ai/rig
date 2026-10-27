@@ -18,6 +18,10 @@
     "#worker": {
       "node": "./dist/skin/worker/node.js",
       "default": "./dist/skin/worker/browser.js"
+    },
+    "#listen": {
+      "node": "./dist/skin/worker/listen/node.js",
+      "default": "./dist/skin/worker/listen/browser.js"
     }
   },
   "exports": {
@@ -43,11 +47,12 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build": "node scripts/build-wasm.mjs --check && rm -rf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "pnpm build && tsx test/worker.test.ts && tsx test/bind-snapshot.test.ts && tsx test/parity.test.ts && tsx test/rig.test.ts && tsx test/skeleton.test.ts && tsx test/loader.test.ts && tsx test/glts.test.ts && tsx test/pose.test.ts",
+    "test": "pnpm build && tsx test/wasm.test.ts && tsx test/worker.test.ts && tsx test/bind-snapshot.test.ts && tsx test/parity.test.ts && tsx test/rig.test.ts && tsx test/skeleton.test.ts && tsx test/loader.test.ts && tsx test/glts.test.ts && tsx test/pose.test.ts",
     "bench": "tsx scripts/bench.ts",
-    "prepack": "pnpm build"
+    "prepack": "pnpm build",
+    "build:wasm": "node scripts/build-wasm.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.9",

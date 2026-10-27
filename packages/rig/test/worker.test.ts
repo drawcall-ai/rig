@@ -13,8 +13,8 @@ const skeleton: SkeletonBone[] = [
   { name: 'tip', parent: 'middle', position: [0, 0.9, 0] },
 ]
 const rigid: SkeletonBone[] = [{ name: 'body', position: [0, 0, 0], pieces: [0] }]
-const expected = compute(mesh.positions, mesh.indices, skeleton, 32)
-const expectedRigid = compute(mesh.positions, mesh.indices, rigid, 32)
+const expected = await compute(mesh.positions, mesh.indices, skeleton, 32)
+const expectedRigid = await compute(mesh.positions, mesh.indices, rigid, 32)
 const run = (bones = skeleton) => computeWeights(mesh.positions.slice(), mesh.indices.slice(), bones, 32)
 
 const positions = mesh.positions.slice()

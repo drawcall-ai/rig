@@ -29,7 +29,7 @@ console.log(
 )
 
 t = performance.now()
-solveSkinWeights({
+await solveSkinWeights({
   positions: mesh.positions,
   volume,
   boneLines: bones,

@@ -1,29 +1,32 @@
-import { Worker, parentPort } from 'node:worker_threads'
-import type { Callbacks, Job, WorkerHandle } from '../worker.js'
+import { Worker } from 'node:worker_threads'
+import { availableParallelism } from 'node:os'
+import type { Callbacks, Job, Reply, WorkerHandle } from '../worker.js'
 import type { SkinSolution } from '../weights.js'
+import type { Task } from '../wasm/run.js'
 
-export function createWorker(callbacks: Callbacks): WorkerHandle {
-  const worker = new Worker(new URL('./run.js', import.meta.url))
+export const parallelism = availableParallelism
+
+export function createWorker(callbacks: Callbacks<SkinSolution>): WorkerHandle<Job> {
+  return connect(new Worker(new URL('./run.js', import.meta.url)), callbacks)
+}
+
+export function createBlurWorker(callbacks: Callbacks<number>): WorkerHandle<Task> {
+  return connect(new Worker(new URL('./blur.js', import.meta.url)), callbacks)
+}
+
+function connect<T>(worker: Worker, callbacks: Callbacks<T>): Worker {
   const exit = (code: number) => fail(new Error(`Rig worker exited before completing (code ${code})`))
   const fail = (error: Error) => {
     worker.off('exit', exit)
     callbacks.error(error)
   }
-  worker.once('message', (result: SkinSolution) => {
+  worker.once('message', (reply: Reply<T>) => {
     worker.off('exit', exit)
-    callbacks.result(result)
+    if ('error' in reply) callbacks.error(reply.error)
+    else callbacks.result(reply.result)
   })
   worker.once('error', fail)
   worker.once('messageerror', fail)
   worker.once('exit', exit)
   return worker
-}
-
-export function listen(compute: (job: Job) => SkinSolution): void {
-  const port = parentPort
-  if (!port) throw new Error('Rig worker requires a parent port')
-  port.on('message', (job: Job) => {
-    const result = compute(job)
-    port.postMessage(result, [result.skinIndices.buffer, result.skinWeights.buffer])
-  })
 }
