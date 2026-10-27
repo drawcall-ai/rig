@@ -14,6 +14,12 @@
   "homepage": "https://github.com/drawcall-ai/rig#readme",
   "type": "module",
   "main": "./dist/node.js",
+  "imports": {
+    "#worker": {
+      "node": "./dist/skin/worker/node.js",
+      "default": "./dist/skin/worker/browser.js"
+    }
+  },
   "exports": {
     ".": {
       "node": {
@@ -39,7 +45,7 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "tsx test/parity.test.ts && tsx test/rig.test.ts && tsx test/skeleton.test.ts && tsx test/loader.test.ts && tsx test/glts.test.ts && tsx test/pose.test.ts",
+    "test": "pnpm build && tsx test/worker.test.ts && tsx test/bind-snapshot.test.ts && tsx test/parity.test.ts && tsx test/rig.test.ts && tsx test/skeleton.test.ts && tsx test/loader.test.ts && tsx test/glts.test.ts && tsx test/pose.test.ts",
     "bench": "tsx scripts/bench.ts",
     "prepack": "pnpm build"
   },

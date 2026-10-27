@@ -3,12 +3,12 @@
  * a skeleton in, per-vertex skin weights and a report with warnings out.
  */
 
-import { meshPieces } from '../measure/pieces.js'
+import { meshPieces } from '../measure/topology.js'
 import { solid } from '../measure/solid.js'
 import { cellAt, computeVoxelVolume, isInside, type VoxelVolume } from '../measure/voxelize.js'
 import { segmentDistanceSq, type Vec3 } from '../vec3.js'
 import { boneLength, boneLines, resolveSkeleton, type ResolvedBone, type SkeletonBone } from './skeleton.js'
-import { solveSkinWeights, type BoneLine, type SolveInput, type SolveResult } from './solve.js'
+import { solveSkinWeights, type BoneLine } from './solve.js'
 import { skinWarnings } from './warnings.js'
 
 export interface BoneReport {
@@ -47,15 +47,6 @@ export interface SkinSolution {
   report: SkinReport
 }
 
-export type Solve = (input: SolveInput) => SolveResult | Promise<SolveResult>
-
-/** The solve computeWeights runs: single-threaded unless an entry swaps in another (the Node entry: solveParallel). */
-let solver: Solve = solveSkinWeights
-
-export function useSolver(solve: Solve): void {
-  solver = solve
-}
-
 /** Weight smoothing passes (stops early on convergence). */
 const BLUR_ITERATIONS = 100
 /** Penalty for voxels off the ends of a bone rather than beside it. */
@@ -66,12 +57,12 @@ const ORIENTATION_WEIGHT = 2
  * deforming segments use voxel weights.
  * Weight slots index `skeleton`.
  */
-export async function computeWeights(
+export function computeWeights(
   positions: Float32Array,
   indices: Uint32Array,
   skeleton: readonly SkeletonBone[],
   resolution: number,
-): Promise<SkinSolution> {
+): SkinSolution {
   const bones = resolveSkeleton(skeleton)
   const { closed, volume } = solid(positions, indices)
   const lines = boneLines(bones)
@@ -87,7 +78,7 @@ export async function computeWeights(
     return { skinIndices, skinWeights, report: { warnings: [], bones: reports, closed, volume } }
   }
   const voxels = computeVoxelVolume(positions, indices, { resolution })
-  const { skinIndices, skinWeights } = await solver({ positions, volume: voxels, boneLines: lines, blurIterations: BLUR_ITERATIONS, orientationWeight: ORIENTATION_WEIGHT })
+  const { skinIndices, skinWeights } = solveSkinWeights({ positions, volume: voxels, boneLines: lines, blurIterations: BLUR_ITERATIONS, orientationWeight: ORIENTATION_WEIGHT })
   // Pieces first: their vertices are settled and must not count as unreached or bleeding
   const pinned = bindPieces(bones, positions, indices, skinIndices, skinWeights)
   const unreached = bindUnreached(positions, skinIndices, skinWeights, lines)

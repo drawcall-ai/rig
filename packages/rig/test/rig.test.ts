@@ -1,11 +1,45 @@
 import assert from 'node:assert/strict'
 import * as THREE from 'three'
-import { bone, pick, pieces, section, skin } from '../src/index.js'
-import { gather } from '../src/measure/soup.js'
-import { solid } from '../src/measure/solid.js'
-import { pose } from '../src/pose.js'
-import { weights } from '../src/weights.js'
+import { bone, pick, pieces, section, skin } from '../dist/index.js'
+import { gather } from '../dist/measure/soup.js'
+import { solid } from '../dist/measure/solid.js'
+import { pose } from '../dist/pose.js'
+import { weights } from '../dist/weights.js'
 import { makeCapsule } from './capsule.js'
+
+// World-space measurements refresh ancestors even when the caller passes a nested container.
+{
+  const parent = new THREE.Group()
+  const nested = new THREE.Group()
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial())
+  parent.add(nested.add(mesh))
+  parent.position.x = 10
+  assert.deepEqual(pieces(nested)[0].center, [10, 0, 0])
+  parent.position.x = 20
+  assert.deepEqual(pieces(nested)[0].center, [20, 0, 0])
+  mesh.geometry.dispose()
+  mesh.material.dispose()
+}
+
+// Refreshing ancestors must also run SkinnedMesh's bind-matrix update hook.
+{
+  const parent = new THREE.Group()
+  const model = new THREE.Group()
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial())
+  parent.add(model.add(mesh))
+  const root = bone('rigid', [0, 0, 0])
+  root.userData.pieces = [0]
+  await skin(model, root, 16)
+  model.position.x = 10
+  assert.deepEqual(pieces(model)[0].center, [10, 0, 0])
+  parent.position.x = 20
+  assert.deepEqual(pieces(model)[0].center, [30, 0, 0])
+  model.traverse((node) => {
+    if (node instanceof THREE.Mesh) node.geometry.dispose()
+  })
+  mesh.geometry.dispose()
+  mesh.material.dispose()
+}
 
 // Capsules y in [-1, 1], instanced twice under a transformed parent, one mirrored
 {

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { GLTSLoader } from '@drawcall/glts'
 import { Bone, LoadingManager, MeshBasicMaterial, SkeletonHelper, SkinnedMesh } from 'three'
-import * as rig from '../src/node.js'
+import * as rig from '../dist/node.js'
 
 const directory = await mkdtemp(join(tmpdir(), 'rig-glts-'))
 const loader = new GLTSLoader(new LoadingManager(), { modules: { '@drawcall/rig': rig } })

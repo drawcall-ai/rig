@@ -3,8 +3,8 @@ import * as THREE from 'three'
 import { clone } from 'three/addons/utils/SkeletonUtils.js'
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { bone, pose, skin } from '../src/index.js'
-import { readGLTF } from '../src/gltf/load.js'
+import { bone, pose, skin } from '../dist/index.js'
+import { readGLTF } from '../dist/gltf/load.js'
 
 function update(object: THREE.Object3D): void {
   object.updateWorldMatrix(true, false)

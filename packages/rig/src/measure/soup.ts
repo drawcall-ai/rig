@@ -12,6 +12,7 @@ export interface Soup {
 
 /** World-space positions of every vertex of every mesh (skinned meshes in their current pose). */
 export function gather(object: THREE.Object3D): Soup {
+  object.updateWorldMatrix(true, false)
   object.updateMatrixWorld(true)
   const meshes: THREE.Mesh[] = []
   object.traverse((node) => node instanceof THREE.Mesh && meshes.push(node))
@@ -49,23 +50,4 @@ export function gather(object: THREE.Object3D): Soup {
  */
 export function outward(i: number, mirrored: boolean): number {
   return mirrored ? i - (i % 3) + [0, 2, 1][i % 3] : i
-}
-
-/**
- * For each vertex, the first vertex at its position: seams split vertices that one surface shares.
- * Positions match exactly, or, given a `step`, when they snap to the same point of a grid that fine
- * (two points closer than `step` can still straddle a grid line).
- */
-export function weld(positions: Float32Array, step = 0): Int32Array {
-  const count = positions.length / 3
-  const first = new Int32Array(count)
-  const byPosition = new Map<string, number>()
-  const snap = (value: number) => (step > 0 ? Math.round(value / step) : value)
-  for (let v = 0; v < count; v++) {
-    const key = `${snap(positions[v * 3])},${snap(positions[v * 3 + 1])},${snap(positions[v * 3 + 2])}`
-    const known = byPosition.get(key)
-    if (known === undefined) byPosition.set(key, v)
-    first[v] = known ?? v
-  }
-  return first
 }

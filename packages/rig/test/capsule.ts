@@ -3,7 +3,7 @@
  * hemispherical caps) built from latitude rings, ~2k vertices.
  */
 
-import type { BoneLine } from './reference/bone-assignment.js'
+import type { BoneLine } from '../src/skin/solve.js'
 
 export interface CapsuleMesh {
   positions: Float32Array
@@ -75,12 +75,12 @@ export function makeCapsule(options: CapsuleOptions = {}): CapsuleMesh {
   return { positions: new Float32Array(positions), indices: new Uint32Array(indices) }
 }
 
-/** A 4-bone chain along the capsule axis; the last one terminal to cover that branch. */
+/** Four deforming segments along the capsule axis, ending at a fifth joint. */
 export function makeCapsuleBones(): BoneLine[] {
   return [
-    { boneIndex: 0, isTerminal: false, start: [0, -0.95, 0], end: [0, -0.35, 0] },
-    { boneIndex: 1, isTerminal: false, start: [0, -0.35, 0], end: [0, 0.0, 0] },
-    { boneIndex: 2, isTerminal: false, start: [0, 0.0, 0], end: [0, 0.35, 0] },
-    { boneIndex: 3, isTerminal: true, start: [0, 0.35, 0], end: [0, 0.95, 0] },
+    { boneIndex: 0, start: [0, -0.95, 0], end: [0, -0.35, 0] },
+    { boneIndex: 1, start: [0, -0.35, 0], end: [0, 0.0, 0] },
+    { boneIndex: 2, start: [0, 0.0, 0], end: [0, 0.35, 0] },
+    { boneIndex: 3, start: [0, 0.35, 0], end: [0, 0.95, 0] },
   ]
 }

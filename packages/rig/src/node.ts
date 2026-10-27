@@ -1,10 +1,6 @@
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js'
 import { RigLoader as BaseLoader } from './loader.js'
 import { readGLTF } from './gltf/load.js'
-import { solveParallel } from './skin/parallel.js'
-import { useSolver } from './skin/weights.js'
-
-useSolver(solveParallel)
 
 export * from './index.js'
 

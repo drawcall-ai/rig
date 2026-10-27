@@ -39,7 +39,7 @@ solveSkinWeights({
 console.log(`solver: ${(performance.now() - t).toFixed(0)}ms, rss ${(process.memoryUsage.rss() / 1024 / 1024).toFixed(0)}MB`)
 
 t = performance.now()
-const assignment = computeBoneAssignment(volume, bones, {
+const assignment = computeBoneAssignment(volume, bones.map((bone) => ({ ...bone, isTerminal: false })), {
   boneCount: 4,
   blurIterations: PARAMS.blurIterations,
   orientationWeight: PARAMS.orientationWeight,

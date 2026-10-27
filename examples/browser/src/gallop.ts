@@ -87,27 +87,33 @@ function sample(keys: number[][], column: number, p: number): number {
   return (2 * s3 - 3 * s2 + 1) * value(i) + (s3 - 2 * s2 + s) * m1 + (-2 * s3 + 3 * s2) * value(i + 1) + (s3 - s2) * m2
 }
 
-/** Bind angle of the segment from a bone to its first child bone, degrees from straight down. */
-function bindAngle(bone: THREE.Object3D): number {
-  const child = bone.children.find((object) => object instanceof THREE.Bone) as THREE.Object3D
-  const d = child.position
-  return THREE.MathUtils.radToDeg(Math.atan2(-d.z, -d.y))
+interface Leg {
+  front: boolean
+  lands: number
+  toe: THREE.Bone
+  segments: { bone: THREE.Bone; bindAngle: number }[]
+  keys: number[][]
+}
+
+interface GallopBones {
+  hips: THREE.Bone
+  body: Map<THREE.Bone, (t: number) => number>
+  legs: Leg[]
 }
 
 /** Joint pitch in degrees per bone at stride time t in 0..1, with the body pitched by hipsPitch. */
-function pose(root: THREE.Object3D, t: number, hipsPitch: number): Map<string, number> {
-  const pitch = new Map<string, number>([['hips', hipsPitch]])
-  for (const [name, channel] of Object.entries(BODY)) pitch.set(name, channel(t))
-  // Keep the head roughly level while the body rocks
-  pitch.set('neck1', pitch.get('neck1')! - 0.5 * hipsPitch)
-  for (const [leg, lands] of Object.entries(LEGS)) {
-    const { bones, keys } = leg.startsWith('front') ? FRONT : HIND
+function pose({ hips, body, legs }: GallopBones, t: number, hipsPitch: number): Map<THREE.Bone, number> {
+  const pitch = new Map<THREE.Bone, number>([[hips, hipsPitch]])
+  for (const [bone, channel] of body) {
+    // Keep the head roughly level while the body rocks
+    pitch.set(bone, channel(t) - (bone.name === 'neck1' ? 0.5 * hipsPitch : 0))
+  }
+  for (const { lands, segments, keys } of legs) {
     const p = phaseOf(lands, t)
     let parent = hipsPitch
-    bones.forEach((segment, i) => {
-      const name = `${leg}_${segment}`
-      const total = sample(keys, i + 1, p) - bindAngle(root.getObjectByName(name) as THREE.Object3D)
-      pitch.set(name, total - parent)
+    segments.forEach(({ bone, bindAngle }, i) => {
+      const total = sample(keys, i + 1, p) - bindAngle
+      pitch.set(bone, total - parent)
       parent = total
     })
   }
@@ -117,13 +123,16 @@ function pose(root: THREE.Object3D, t: number, hipsPitch: number): Map<string, n
 /** Fill the undefined entries of a periodic series by linear interpolation. */
 function fill(values: (number | undefined)[]): number[] {
   const n = values.length
-  const known = values.flatMap((value, i) => (value === undefined ? [] : [i]))
+  const known = values.flatMap((value, index) => (value === undefined ? [] : [{ index, value }]))
+  const first = known.at(0)
+  const last = known.at(-1)
+  if (!first || !last) throw new Error('gallop needs at least one planted-hoof sample per girdle')
   return values.map((value, i) => {
     if (value !== undefined) return value
-    const a = known.filter((k) => k < i).at(-1) ?? known.at(-1)! - n
-    const b = known.find((k) => k > i) ?? known[0] + n
-    const s = (i - a) / (b - a)
-    return (1 - s) * values[(a + n) % n]! + s * values[b % n]!
+    const a = known.findLast((sample) => sample.index < i) ?? { index: last.index - n, value: last.value }
+    const b = known.find((sample) => sample.index > i) ?? { index: first.index + n, value: first.value }
+    const s = (i - a.index) / (b.index - a.index)
+    return (1 - s) * a.value + s * b.value
   })
 }
 
@@ -147,41 +156,64 @@ export function gallop(root: THREE.Object3D): Motion {
 
 /** The gallop clip, or null when the model lacks the example skeleton's bones. */
 function gallopClip(root: THREE.Object3D): THREE.AnimationClip | null {
-  const legs = Object.entries(LEGS)
   const hips = root.getObjectByName('hips')
-  const toes = legs.map(([leg]) => root.getObjectByName(`${leg}_toe`))
-  if (!hips || toes.some((toe) => !toe)) return null
+  if (!(hips instanceof THREE.Bone)) return null
+  const body = new Map<THREE.Bone, (t: number) => number>()
+  for (const [name, channel] of Object.entries(BODY)) {
+    const bone = root.getObjectByName(name)
+    if (!(bone instanceof THREE.Bone)) return null
+    body.set(bone, channel)
+  }
+  const legs: Leg[] = []
+  for (const [name, lands] of Object.entries(LEGS)) {
+    const front = name.startsWith('front')
+    const { bones, keys } = front ? FRONT : HIND
+    const toe = root.getObjectByName(`${name}_toe`)
+    if (!(toe instanceof THREE.Bone)) return null
+    const segments: Leg['segments'] = []
+    for (const segment of bones) {
+      const bone = root.getObjectByName(`${name}_${segment}`)
+      if (!(bone instanceof THREE.Bone)) return null
+      const child = bone.children.find((object) => object instanceof THREE.Bone)
+      if (!child) return null
+      // Absolute segment angle in the bind pose, measured from straight down.
+      const bindAngle = THREE.MathUtils.radToDeg(Math.atan2(-child.position.z, -child.position.y))
+      segments.push({ bone, bindAngle })
+    }
+    legs.push({ front, lands, toe, segments, keys })
+  }
+  const bones = { hips, body, legs }
   const x = new THREE.Vector3(1, 0, 0)
   const world = (object: THREE.Object3D) => object.getWorldPosition(new THREE.Vector3())
-  const apply = (pitch: Map<string, number>) => {
-    for (const [name, angle] of pitch) {
-      root.getObjectByName(name)!.quaternion.setFromAxisAngle(x, THREE.MathUtils.degToRad(angle))
+  const apply = (pitch: Map<THREE.Bone, number>) => {
+    for (const [bone, angle] of pitch) {
+      bone.quaternion.setFromAxisAngle(x, THREE.MathUtils.degToRad(angle))
     }
     root.updateMatrixWorld(true)
   }
 
   root.updateMatrixWorld(true)
-  const ground = Math.min(...toes.map((toe) => world(toe!).y))
+  const ground = Math.min(...legs.map(({ toe }) => world(toe).y))
   // Lever arms from the hips pivot to the shoulders and hip joints
-  const reach = (girdle: string, bone: string) =>
+  const reach = (front: boolean) =>
     legs
-      .filter(([leg]) => leg.startsWith(girdle))
-      .reduce((sum, [leg]) => sum + world(root.getObjectByName(`${leg}_${bone}`)!).z - world(hips).z, 0) / 2
-  const frontArm = reach('front', 'upper')
-  const hindArm = reach('hind', 'thigh')
+      .filter((leg) => leg.front === front)
+      .reduce((sum, leg) => sum + world(leg.segments[0].bone).z - world(hips).z, 0) / 2
+  const frontArm = reach(true)
+  const hindArm = reach(false)
 
   // How far each girdle must drop so its lowest planted hoof meets the ground
   const n = SAMPLES
   const times = Array.from({ length: n }, (_, i) => i / n)
   const needs = times.map((t) => {
-    apply(pose(root, t, 0))
-    const need = (girdle: string) => {
-      const planted = legs.flatMap(([leg, lands], i) =>
-        leg.startsWith(girdle) && phaseOf(lands, t) < STANCE ? [world(toes[i]!).y] : [],
+    apply(pose(bones, t, 0))
+    const need = (front: boolean) => {
+      const planted = legs.flatMap((leg) =>
+        leg.front === front && phaseOf(leg.lands, t) < STANCE ? [world(leg.toe).y] : [],
       )
       return planted.length ? ground - Math.min(...planted) : undefined
     }
-    return { front: need('front'), hind: need('hind') }
+    return { front: need(true), hind: need(false) }
   })
   const airborne = needs.map((need) => need.front === undefined && need.hind === undefined)
   const front = fill(needs.map((need) => need.front))
@@ -191,8 +223,8 @@ function gallopClip(root: THREE.Object3D): THREE.AnimationClip | null {
   const rise = smooth(airborne.map((air) => (air ? SUSPENSION : 0)), 4)
   const lift = smooth(times.map((_, i) => hind[i] + hindArm * sine[i]), 2).map((h, i) => h + rise[i])
   const pitches = sine.map((s) => THREE.MathUtils.radToDeg(Math.asin(s)))
-  const poses = times.map((t, i) => pose(root, t, pitches[i]))
-  for (const name of poses[0].keys()) root.getObjectByName(name)!.quaternion.identity()
+  const poses = times.map((t, i) => pose(bones, t, pitches[i]))
+  for (const bone of poses[0].keys()) bone.quaternion.identity()
   root.updateMatrixWorld(true)
 
   // Close the loop with a copy of the first key
@@ -201,9 +233,16 @@ function gallopClip(root: THREE.Object3D): THREE.AnimationClip | null {
   lift.push(lift[0])
   const q = new THREE.Quaternion()
   const tracks: THREE.KeyframeTrack[] = []
-  for (const name of poses[0].keys()) {
-    const values = poses.flatMap((pitch) => q.setFromAxisAngle(x, THREE.MathUtils.degToRad(pitch.get(name)!)).toArray())
-    tracks.push(new THREE.QuaternionKeyframeTrack(`${name}.quaternion`, keyTimes, values))
+  const rotations = new Map<THREE.Bone, number[]>()
+  for (const pitch of poses) {
+    for (const [bone, angle] of pitch) {
+      const values = rotations.get(bone) ?? []
+      values.push(...q.setFromAxisAngle(x, THREE.MathUtils.degToRad(angle)).toArray())
+      rotations.set(bone, values)
+    }
+  }
+  for (const [bone, values] of rotations) {
+    tracks.push(new THREE.QuaternionKeyframeTrack(`${bone.name}.quaternion`, keyTimes, values))
   }
   const scale = hips.parent ? hips.parent.getWorldScale(new THREE.Vector3()).y : 1
   const bob = lift.flatMap((h) => [hips.position.x, hips.position.y + h / scale, hips.position.z])

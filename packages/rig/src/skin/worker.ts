@@ -1,22 +1,38 @@
-/** Worker side of solveParallel: blur passes over a range of voxels in shared memory. */
+import { createWorker } from '#worker'
+import type { SkeletonBone } from './skeleton.js'
+import type { SkinSolution } from './weights.js'
 
-import { parentPort } from 'node:worker_threads'
-import { blurPass, type BlurGrid, type WeightBuffers } from './solve.js'
+export interface Job {
+  positions: Float32Array<ArrayBuffer>
+  indices: Uint32Array<ArrayBuffer>
+  skeleton: readonly SkeletonBone[]
+  resolution: number
+}
 
-type Message =
-  | { type: 'setup'; grid: BlurGrid; a: WeightBuffers; b: WeightBuffers }
-  | { type: 'pass'; fromA: boolean; start: number; end: number }
+export interface Callbacks {
+  result(value: SkinSolution): void
+  error(error: Error): void
+}
 
-let state: { grid: BlurGrid; a: WeightBuffers; b: WeightBuffers } | undefined
+export interface WorkerHandle {
+  postMessage(job: Job, transfer: ArrayBuffer[]): void
+  terminate(): void | Promise<number>
+}
 
-parentPort?.on('message', (message: Message) => {
-  if (message.type === 'setup') {
-    state = message
-    parentPort?.postMessage(0)
-    return
+/** Consumes the triangle buffers. Each job owns its worker, including on failure. */
+export async function computeWeights(
+  positions: Float32Array<ArrayBuffer>,
+  indices: Uint32Array<ArrayBuffer>,
+  skeleton: readonly SkeletonBone[],
+  resolution: number,
+): Promise<SkinSolution> {
+  let worker: WorkerHandle | undefined
+  try {
+    return await new Promise<SkinSolution>((resolve, reject) => {
+      worker = createWorker({ result: resolve, error: reject })
+      worker.postMessage({ positions, indices, skeleton, resolution }, [positions.buffer, indices.buffer])
+    })
+  } finally {
+    await worker?.terminate()
   }
-  if (!state) throw new Error('blur worker got a pass before setup')
-  const { grid, a, b } = state
-  const change = message.fromA ? blurPass(grid, a, b, message.start, message.end) : blurPass(grid, b, a, message.start, message.end)
-  parentPort?.postMessage(change)
-})
+}

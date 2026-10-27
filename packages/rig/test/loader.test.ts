@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createCanvas } from '@napi-rs/canvas'
 import { CylinderGeometry, DataTexture, LoadingManager, MeshStandardMaterial, SkinnedMesh } from 'three'
-import { RigLoader, type RigRequest, type SkeletonBone } from '../src/node.js'
+import { RigLoader, type RigRequest, type SkeletonBone } from '../dist/node.js'
 
 const directory = await mkdtemp(join(tmpdir(), 'rig-loader-'))
 try {

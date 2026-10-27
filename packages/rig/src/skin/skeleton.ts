@@ -82,8 +82,7 @@ export function resolveSkeleton(bones: readonly SkeletonBone[]): ResolvedBone[] 
 }
 
 export function boneLines(bones: ResolvedBone[]): BoneLine[] {
-  // A deforming bone always has a child, so no line is terminal
-  return bones.flatMap((bone, boneIndex) => (bone.deform ? [{ start: bone.position, end: bone.tail, boneIndex, isTerminal: false }] : []))
+  return bones.flatMap((bone, boneIndex) => (bone.deform ? [{ start: bone.position, end: bone.tail, boneIndex }] : []))
 }
 
 /** Length of the bone's segment, joint to tail. */

@@ -1,6 +1,6 @@
 /** Whether a triangle soup encloses a solid, and how much. */
 
-import { weld } from './soup.js'
+import { weld } from './topology.js'
 
 /** Vertices this close, relative to the mesh's extent, are one: procedural seams can differ by rounding. */
 const WELD_TOLERANCE = 1e-6

@@ -1,6 +1,6 @@
 /** What lies under points of an orthographic view, measured on the voxel solid along the camera's line of sight. */
 
-import * as THREE from 'three'
+import type * as THREE from 'three'
 import type { Vec3 } from '../vec3.js'
 import { AXES } from './section.js'
 import { gather } from './soup.js'

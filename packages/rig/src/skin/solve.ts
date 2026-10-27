@@ -4,30 +4,26 @@
  * with early convergence exit -> per-vertex top-4 weights.
  *
  * Semantics mirror the vendored CPU reference (test/reference/, which mirrors
- * the original @drawcall/rigged library) with restructurings that provably do
- * not change the output, chosen to keep memory flat:
+ * the original @drawcall/rigged library), with changes to keep memory flat:
  * - Per-bone distance fields fold into one running best-dist/best-bone pair
  *   right after each bone's BFS (same strict-< compare in the same bone
  *   order), so memory is flat in the bone count.
  * - Distance/queued/blur state is stored per inside voxel, not per grid cell.
  * - Weights stay in the sparse top-4 representation end to end; the
  *   reference's dense round-trip and its post-blur normalization are
- *   identities under the final per-vertex top-4 normalization.
- * Float32Array stores round exactly where the reference's do, so results
- * match the reference bit-for-bit up to top-4 tie order.
+ *   redundant under the final per-vertex top-4 normalization, apart from
+ *   Float32 rounding. Parity tests compare per-bone weights with a tolerance.
  */
 
 import type { VoxelVolume } from '../measure/voxelize.js'
 import type { Vec3 } from '../vec3.js'
 
-/** A bone as a line segment that attracts weights; several lines may share a boneIndex. */
+/** A deforming bone segment that attracts weights; several lines may share a boneIndex. */
 export interface BoneLine {
   start: Vec3
   end: Vec3
   /** Joint index written to JOINTS_0. */
   boneIndex: number
-  /** Terminal bones (leaves) skip the orientation penalty. */
-  isTerminal: boolean
 }
 
 export interface SolveInput {
@@ -64,53 +60,44 @@ const NEAREST_CELL_MAX_RADIUS = 10
 const BLUR_WEIGHTS = new Float32Array([0, 4 / 56, 2 / 56, 1 / 56])
 
 /** Buffers of the sparse top-4 weights: per inside voxel, up to 4 bones and weights. */
-export interface WeightBuffers {
+interface WeightBuffers {
   bones: Uint8Array
   weights: Float32Array
   count: Uint8Array
 }
 
 /** The voxel grid as the blur pass reads it. */
-export interface BlurGrid {
+interface BlurGrid {
   dimensions: readonly [number, number, number]
   isInsideFlat: Uint8Array
   insideIndices: Uint32Array
   flatToLocal: Uint32Array
 }
 
-export interface PreparedSolve {
+interface PreparedSolve {
   grid: BlurGrid
   /** Ping-pong weight buffers; a starts as the hard assignment. */
   a: WeightBuffers
   b: WeightBuffers
 }
 
-/** Typed-array allocation, so the parallel solver can put buffers in shared memory. */
-export type Allocate = (bytes: number) => ArrayBufferLike
-
 export function solveSkinWeights(input: SolveInput): SolveResult {
   const prepared = prepareSolve(input)
   const { a, b } = prepared
-  const numInside = prepared.grid.insideIndices.length
   let iterations = 0
   for (let iter = 0; iter < input.blurIterations; iter++) {
     iterations = iter + 1
-    const maxChange = iter % 2 === 0 ? blurPass(prepared.grid, a, b, 0, numInside) : blurPass(prepared.grid, b, a, 0, numInside)
-    if (converged(maxChange, iter)) break
+    const maxChange = iter % 2 === 0 ? blurPass(prepared.grid, a, b) : blurPass(prepared.grid, b, a)
+    if (maxChange < 0.001 && iter > 10) break
   }
   return finishSolve(input, prepared, iterations % 2 === 0 ? a : b)
-}
-
-/** Early convergence: the blur stops once the largest weight change of a pass is tiny. */
-export function converged(maxChange: number, iter: number): boolean {
-  return maxChange < 0.001 && iter > 10
 }
 
 /**
  * Geodesic BFS per bone -> orientation-penalized closest bone per inside voxel,
  * written into buffer a as the blur's starting point.
  */
-export function prepareSolve(input: SolveInput, allocate: Allocate = (bytes) => new ArrayBuffer(bytes)): PreparedSolve {
+function prepareSolve(input: SolveInput): PreparedSolve {
   const { volume, boneLines } = input
   for (const bone of boneLines) {
     if (!Number.isInteger(bone.boneIndex) || bone.boneIndex < 0 || bone.boneIndex >= MAX_BONES_PER_SOLVE) {
@@ -125,7 +112,7 @@ export function prepareSolve(input: SolveInput, allocate: Allocate = (bytes) => 
   const numInside = insideIndices.length
 
   // grid index -> local (inside-voxel) index
-  const flatToLocal = new Uint32Array(allocate(dimX * dimYZ * 4))
+  const flatToLocal = new Uint32Array(dimX * dimYZ)
   for (let i = 0; i < numInside; i++) flatToLocal[insideIndices[i]] = i
 
   const dist = new Float32Array(numInside)
@@ -234,7 +221,7 @@ export function prepareSolve(input: SolveInput, allocate: Allocate = (bytes) => 
       if (d === Infinity) continue
 
       let adjustedDist = d
-      if (d > EPSILON && !bone.isTerminal) {
+      if (d > EPSILON) {
         const idx = insideIndices[local]
         const x = (idx / dimYZ) | 0
         const rem = idx - x * dimYZ
@@ -273,9 +260,9 @@ export function prepareSolve(input: SolveInput, allocate: Allocate = (bytes) => 
   }
 
   const buffers = (): WeightBuffers => ({
-    bones: new Uint8Array(allocate(numInside * MAX_INFLUENCES)),
-    weights: new Float32Array(allocate(numInside * MAX_INFLUENCES * 4)),
-    count: new Uint8Array(allocate(numInside)),
+    bones: new Uint8Array(numInside * MAX_INFLUENCES),
+    weights: new Float32Array(numInside * MAX_INFLUENCES),
+    count: new Uint8Array(numInside),
   })
   const a = buffers()
   const b = buffers()
@@ -287,12 +274,8 @@ export function prepareSolve(input: SolveInput, allocate: Allocate = (bytes) => 
       a.count[local] = 1
     }
   }
-  const inside = new Uint8Array(allocate(isInsideFlat.byteLength))
-  inside.set(isInsideFlat)
-  const indices = new Uint32Array(allocate(insideIndices.byteLength))
-  indices.set(insideIndices)
   return {
-    grid: { dimensions: volume.dimensions, isInsideFlat: inside, insideIndices: indices, flatToLocal },
+    grid: { dimensions: volume.dimensions, isInsideFlat, insideIndices, flatToLocal },
     a,
     b,
   }
@@ -303,12 +286,12 @@ const boneSeen = new Uint8Array(MAX_BONES_PER_SOLVE)
 const seenList = new Uint8Array(MAX_BONES_PER_SOLVE)
 
 /**
- * One blur pass over inside voxels [start, end): each takes the kernel-weighted
+ * One blur pass over inside voxels: each takes the kernel-weighted
  * average of its 27-cell neighborhood (center at weight 0, exactly like the
  * reference's precomputed neighbor list) from src, keeps the top 4 in dst.
- * Reads only src, so ranges can run in parallel. Returns the largest change.
+ * Reads only src and writes dst. Returns the largest change for convergence.
  */
-export function blurPass(grid: BlurGrid, src: WeightBuffers, dst: WeightBuffers, start: number, end: number): number {
+function blurPass(grid: BlurGrid, src: WeightBuffers, dst: WeightBuffers): number {
   const [dimX, dimY, dimZ] = grid.dimensions
   const dimYZ = dimY * dimZ
   const { isInsideFlat, insideIndices, flatToLocal } = grid
@@ -316,93 +299,93 @@ export function blurPass(grid: BlurGrid, src: WeightBuffers, dst: WeightBuffers,
   const dstBones = dst.bones, dstWeights = dst.weights, dstCount = dst.count
   let maxChange = 0
 
-  for (let local = start; local < end; local++) {
-      const idx = insideIndices[local]
-      const x = (idx / dimYZ) | 0
-      const rem = idx - x * dimYZ
-      const y = (rem / dimZ) | 0
-      const z = rem - y * dimZ
+  for (let local = 0; local < insideIndices.length; local++) {
+    const idx = insideIndices[local]
+    const x = (idx / dimYZ) | 0
+    const rem = idx - x * dimYZ
+    const y = (rem / dimZ) | 0
+    const z = rem - y * dimZ
 
-      let numSeen = 0
-      let totalW = 0
+    let numSeen = 0
+    let totalW = 0
 
-      for (let dx = -1; dx <= 1; dx++) {
-        const nx = x + dx
-        if (nx < 0 || nx >= dimX) continue
-        for (let dy = -1; dy <= 1; dy++) {
-          const ny = y + dy
-          if (ny < 0 || ny >= dimY) continue
-          for (let dz = -1; dz <= 1; dz++) {
-            const nz = z + dz
-            if (nz < 0 || nz >= dimZ) continue
-            const nidx = nx * dimYZ + ny * dimZ + nz
-            if (!isInsideFlat[nidx]) continue
+    for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx
+      if (nx < 0 || nx >= dimX) continue
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy
+        if (ny < 0 || ny >= dimY) continue
+        for (let dz = -1; dz <= 1; dz++) {
+          const nz = z + dz
+          if (nz < 0 || nz >= dimZ) continue
+          const nidx = nx * dimYZ + ny * dimZ + nz
+          if (!isInsideFlat[nidx]) continue
 
-            const kw = BLUR_WEIGHTS[Math.abs(dx) + Math.abs(dy) + Math.abs(dz)]
-            totalW += kw
+          const kw = BLUR_WEIGHTS[Math.abs(dx) + Math.abs(dy) + Math.abs(dz)]
+          totalW += kw
 
-            const nLocal = flatToLocal[nidx]
-            const nCnt = srcCount[nLocal]
-            const nBase = nLocal * MAX_INFLUENCES
-            for (let i = 0; i < nCnt; i++) {
-              const b = srcBones[nBase + i]
-              if (!boneSeen[b]) {
-                boneSeen[b] = 1
-                seenList[numSeen++] = b
-              }
-              boneSum[b] += srcWeights[nBase + i] * kw
+          const nLocal = flatToLocal[nidx]
+          const nCnt = srcCount[nLocal]
+          const nBase = nLocal * MAX_INFLUENCES
+          for (let i = 0; i < nCnt; i++) {
+            const b = srcBones[nBase + i]
+            if (!boneSeen[b]) {
+              boneSeen[b] = 1
+              seenList[numSeen++] = b
             }
+            boneSum[b] += srcWeights[nBase + i] * kw
           }
         }
-      }
-
-      const outBase = local * MAX_INFLUENCES
-      const srcCnt = srcCount[local]
-      let outCount = 0
-
-      if (totalW > 0) {
-        const inv = 1 / totalW
-
-        // Selection sort for the top 4 (numSeen is small)
-        const kMax = Math.min(numSeen, MAX_INFLUENCES)
-        for (let k = 0; k < kMax; k++) {
-          let maxIdx = k
-          for (let j = k + 1; j < numSeen; j++) {
-            if (boneSum[seenList[j]] > boneSum[seenList[maxIdx]]) maxIdx = j
-          }
-          if (maxIdx !== k) {
-            const tmp = seenList[k]
-            seenList[k] = seenList[maxIdx]
-            seenList[maxIdx] = tmp
-          }
-          const b = seenList[k]
-          const newW = boneSum[b] * inv
-          if (newW > 0.001) {
-            dstBones[outBase + outCount] = b
-            dstWeights[outBase + outCount] = newW
-
-            // Track change for convergence
-            const oldW = outCount < srcCnt && srcBones[outBase + outCount] === b ? srcWeights[outBase + outCount] : 0
-            const change = Math.abs(newW - oldW)
-            if (change > maxChange) maxChange = change
-
-            outCount++
-          }
-        }
-      }
-      dstCount[local] = outCount
-
-      for (let i = 0; i < numSeen; i++) {
-        boneSum[seenList[i]] = 0
-        boneSeen[seenList[i]] = 0
       }
     }
+
+    const outBase = local * MAX_INFLUENCES
+    const srcCnt = srcCount[local]
+    let outCount = 0
+
+    if (totalW > 0) {
+      const inv = 1 / totalW
+
+      // Selection sort for the top 4 (numSeen is small)
+      const kMax = Math.min(numSeen, MAX_INFLUENCES)
+      for (let k = 0; k < kMax; k++) {
+        let maxIdx = k
+        for (let j = k + 1; j < numSeen; j++) {
+          if (boneSum[seenList[j]] > boneSum[seenList[maxIdx]]) maxIdx = j
+        }
+        if (maxIdx !== k) {
+          const tmp = seenList[k]
+          seenList[k] = seenList[maxIdx]
+          seenList[maxIdx] = tmp
+        }
+        const b = seenList[k]
+        const newW = boneSum[b] * inv
+        if (newW > 0.001) {
+          dstBones[outBase + outCount] = b
+          dstWeights[outBase + outCount] = newW
+
+          // Track change for convergence
+          const oldW = outCount < srcCnt && srcBones[outBase + outCount] === b ? srcWeights[outBase + outCount] : 0
+          const change = Math.abs(newW - oldW)
+          if (change > maxChange) maxChange = change
+
+          outCount++
+        }
+      }
+    }
+    dstCount[local] = outCount
+
+    for (let i = 0; i < numSeen; i++) {
+      boneSum[seenList[i]] = 0
+      boneSeen[seenList[i]] = 0
+    }
+  }
 
   return maxChange
 }
 
 /** Per-vertex top-4 weights from the final blur buffers. */
-export function finishSolve(input: SolveInput, prepared: PreparedSolve, final: WeightBuffers): SolveResult {
+function finishSolve(input: SolveInput, prepared: PreparedSolve, final: WeightBuffers): SolveResult {
   const { positions, volume } = input
   const [dimX, dimY, dimZ] = volume.dimensions
   const dimYZ = dimY * dimZ

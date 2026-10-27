@@ -33,6 +33,8 @@ const configs = [
 
 const mesh = makeCapsule()
 const bones = makeCapsuleBones()
+// End joints do not attract weights in the production skeleton model.
+const referenceBones = bones.map((bone) => ({ ...bone, isTerminal: false }))
 const numVertices = mesh.positions.length / 3
 
 for (const config of configs) {
@@ -41,7 +43,7 @@ for (const config of configs) {
   assert.deepEqual(ours.dimensions, volume.dimensions, `${config.name}: grid dimensions differ`)
   assert.deepEqual(ours.isInsideFlat, volume.isInsideFlat, `${config.name}: voxel occupancy differs`)
 
-  const assignment = computeBoneAssignment(volume, bones, {
+  const assignment = computeBoneAssignment(volume, referenceBones, {
     boneCount: 4,
     blurIterations: config.blurIterations,
     orientationWeight: config.orientationWeight,
