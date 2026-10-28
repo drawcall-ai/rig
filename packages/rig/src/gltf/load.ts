@@ -3,10 +3,11 @@ import { isAbsolute, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createCanvas, loadImage } from '@napi-rs/canvas'
 import { DataTexture, LoaderUtils, type LoadingManager } from 'three'
-import type { GLTF, GLTFLoader, GLTFParser } from 'three/addons/loaders/GLTFLoader.js'
+import type { GLTFLoader, GLTFParser } from 'three/addons/loaders/GLTFLoader.js'
+import type { LoadedGLTF } from '../loader.js'
 
 /** Read local and remote glTF resources without installing browser globals. */
-export async function readGLTF(loader: GLTFLoader, input: string | URL, onProgress?: (event: ProgressEvent) => void): Promise<GLTF> {
+export async function readGLTF(loader: GLTFLoader, input: string | URL, onProgress?: (event: ProgressEvent) => void): Promise<LoadedGLTF> {
   const inputURL = String(input)
   const resolved = isAbsolute(inputURL) || /^[a-z][a-z\d+.-]*:/i.test(inputURL) ? inputURL : LoaderUtils.resolveURL(inputURL, loader.path)
   const url = loader.manager.resolveURL(resolved)
@@ -15,7 +16,7 @@ export async function readGLTF(loader: GLTFLoader, input: string | URL, onProgre
   onProgress?.(new ReadProgress(data.byteLength))
   const base = loader.resourcePath ? canonicalURL(loader.resourcePath).href : new URL('.', source).href
   loader.register((parser) => resources(parser, loader.withCredentials))
-  return loader.parseAsync(data, base)
+  return { ...await loader.parseAsync(data, base), data }
 }
 
 function canonicalURL(input: string): URL {

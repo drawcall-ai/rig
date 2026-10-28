@@ -1,9 +1,9 @@
-import { Loader, SkinnedMesh, type Skeleton, type AnimationClip, type Group } from 'three'
+import { FileLoader, Loader, LoaderUtils, SkinnedMesh, type Skeleton, type AnimationClip, type Group } from 'three'
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'meshoptimizer'
 import { boneTree } from './bone.js'
 import { bind } from './skin/bind.js'
-import { cachedWeights, type RigSource } from './skin/cache.js'
+import { cachedWeights } from './skin/cache.js'
 import type { SkeletonBone } from './skin/skeleton.js'
 import type { SkinReport } from './skin/weights.js'
 import { Resources } from './resources.js'
@@ -16,8 +16,6 @@ export interface RigRequest {
   skeleton: readonly SkeletonBone[]
   /** Voxels along the longest model axis. */
   resolution?: number
-  /** Enables persistent caching; pass a loaded GLTS scene's source, or getGLTSSource() inside a script. */
-  source?: RigSource
 }
 
 export interface RigResult {
@@ -30,12 +28,16 @@ export interface RigResult {
   dispose(): void
 }
 
-/** Loads a glTF and rigs a fresh scene from serialized skeleton input. */
+export interface LoadedGLTF extends GLTF {
+  data: ArrayBuffer
+}
+
+/** Loads a glTF and rigs a fresh scene, reusing cached weights for unchanged input. */
 export class RigLoader extends Loader<RigResult, RigRequest> {
   override load(request: RigRequest, onLoad: (result: RigResult) => void, onProgress?: (event: ProgressEvent) => void, onError?: (error: unknown) => void): void {
     const url = String(request.url)
     this.manager.itemStart(url)
-    void this.rig(request, onProgress).then(onLoad).catch((error: unknown) => {
+    void this.rig(request, url, onProgress).then(onLoad).catch((error: unknown) => {
       this.manager.itemError(url)
       if (onError) onError(error)
       else console.error(error)
@@ -53,21 +55,24 @@ export class RigLoader extends Loader<RigResult, RigRequest> {
       .setRequestHeader(this.requestHeader)
   }
 
-  protected async read(url: string | URL, onProgress?: (event: ProgressEvent) => void): Promise<GLTF> {
+  protected async read(url: string | URL, onProgress?: (event: ProgressEvent) => void): Promise<LoadedGLTF> {
     const loader = this.createLoader()
     const input = String(url)
     if (/^[a-z][a-z\d+.-]*:/i.test(input) || input.startsWith('/')) loader.setPath('')
-    return loader.loadAsync(input, onProgress)
+    const base = LoaderUtils.extractUrlBase(input)
+    const resourcePath = loader.resourcePath || (loader.path ? LoaderUtils.resolveURL(base, loader.path) : base)
+    const data = await new FileLoader(loader.manager)
+      .setPath(loader.path)
+      .setResponseType('arraybuffer')
+      .setRequestHeader(loader.requestHeader)
+      .setWithCredentials(loader.withCredentials)
+      .loadAsync(input, onProgress)
+    if (!(data instanceof ArrayBuffer)) throw new Error('RigLoader expected binary model data')
+    return { ...await loader.parseAsync(data, resourcePath), data }
   }
 
-  private async rig(request: RigRequest, onProgress?: (event: ProgressEvent) => void): Promise<RigResult> {
-    const url = String(request.url)
+  private async rig(request: RigRequest, url: string, onProgress?: (event: ProgressEvent) => void): Promise<RigResult> {
     const resolution = request.resolution ?? 128
-    const metadata = request.source
-    const fetchOptions: RequestInit = {
-      credentials: this.withCredentials ? 'include' : 'same-origin',
-      headers: { ...this.requestHeader },
-    }
     checkResolution(resolution, 'RigLoader resolution')
     const root = boneTree(request.skeleton)
     const source = await this.read(url, onProgress)
@@ -75,8 +80,7 @@ export class RigLoader extends Loader<RigResult, RigRequest> {
     const resources = new Resources()
     source.scenes.forEach((entry) => resources.collect(entry))
     try {
-      const solve = metadata ? cachedWeights(metadata, fetchOptions) : undefined
-      const report = await bind(scene, root, resolution, solve)
+      const report = await bind(scene, root, resolution, cachedWeights(source.data))
       resources.collect(scene)
       let skeleton: Skeleton | undefined
       scene.traverse((entry) => {

@@ -24,11 +24,10 @@ Use `THREE.Box3` for bounds, `pieces()` for connected geometry, and batched `sec
 ```ts
 // character.glts — coordinates below illustrate the pattern; measure your model.
 import * as THREE from 'three'
-import { getGLTSSource, isPreview, loadingManager, onDispose, scene } from '@drawcall/glts'
+import { isPreview, loadingManager, onDispose, scene } from '@drawcall/glts'
 import { RigLoader } from '@drawcall/rig'
 
 const rig = await new RigLoader(loadingManager).loadAsync({
-  source: getGLTSSource(),
   url: new URL('./character.glb', import.meta.url),
   skeleton: [
     { name: 'Hips', position: [0, 0.9, 0] },
@@ -51,9 +50,9 @@ if (isPreview) {
 }
 ```
 
-Use `RigLoader` when the asset loads its own model. When the model is already in hand, such as a procedural mesh or a model an app loaded, skin it directly: pass the skeleton list straight to `skin()` when it is one data list shared with other code (such as an animation library), and build bones with `bone()` when joints are built in code. The bound bones are the ones `skin()` built or received: find one with the model's `getObjectByName`. Rebuild from the original model on each iteration: re-skinning the previous result compounds its deformation.
+Use `RigLoader` to load and rig a glTF/GLB URL. It caches weights automatically from the model contents, skeleton, and resolution; it does not depend on the surrounding script. For an existing or procedural object, use `skin()` directly: pass a skeleton list when joints are data, or build bones with `bone()` when joints are built in code. Rebuild from the original model on each iteration: re-skinning the previous result compounds its deformation.
 
-The source metadata enables persistent weight caching while every load still owns a fresh scene. Use `@drawcall/glts` 2 or later and add the `vitecache` Vite plugin to the host; follow its [cache workflow](https://github.com/drawcall-ai/vitecache/blob/main/packages/vitecache/skills/vitecache/SKILL.md) for deployment. Keep local source files and dependencies inside the Vite project root, and run Node precomputation from that same root to share the cache. Remote dependencies are revalidated by content before using cached weights.
+Add the `vitecache` Vite plugin to browser hosts that generate cached weights; Node writes caches directly without Vite. Follow its [cache workflow](https://github.com/drawcall-ai/vitecache/blob/main/packages/vitecache/skills/vitecache/SKILL.md) for deployment and sharing precomputed caches. Each load still creates a fresh scene; unchanged models and rig settings reuse the expensive weight computation.
 
 Skinning reads joints and mesh in world space. Skin the model unscaled at the origin, then place it: a model moved first no longer matches a skeleton measured in model coordinates.
 

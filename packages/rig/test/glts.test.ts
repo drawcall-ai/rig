@@ -8,8 +8,10 @@ import { Bone, LoadingManager, MeshBasicMaterial, SkeletonHelper, SkinnedMesh } 
 import * as rig from '../dist/node.js'
 
 const directory = await mkdtemp(join(tmpdir(), 'rig-glts-'))
+const cwd = process.cwd()
 const loader = new GLTSLoader(new LoadingManager(), { resolve: import.meta.resolve })
 try {
+  process.chdir(directory)
   const model = new URL('./fixtures/fox.glb', import.meta.url).href
   const file = join(directory, 'fox.glts')
   await writeFile(file, `
@@ -89,5 +91,6 @@ if (isPreview) {
   console.log('GLTS assets own independent rigs and preview-only diagnostics in Node')
 } finally {
   loader.dispose()
+  process.chdir(cwd)
   await rm(directory, { recursive: true, force: true })
 }

@@ -8,7 +8,9 @@ import { CylinderGeometry, DataTexture, LoadingManager, MeshStandardMaterial, Sk
 import { RigLoader, type RigRequest, type SkeletonBone } from '../dist/node.js'
 
 const directory = await mkdtemp(join(tmpdir(), 'rig-loader-'))
+const cwd = process.cwd()
 try {
+  process.chdir(directory)
   // External buffers and textures exercise the standalone Node path, without glts browser globals.
   const geometry = new CylinderGeometry(0.5, 0.5, 2, 12, 8).toNonIndexed()
   const positions = Float32Array.from(geometry.getAttribute('position').array)
@@ -115,5 +117,6 @@ try {
   geometry.dispose()
   console.log('RigLoader Node resources, concurrent rigs, ownership and failures ok')
 } finally {
+  process.chdir(cwd)
   await rm(directory, { recursive: true, force: true })
 }
