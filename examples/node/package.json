@@ -8,7 +8,7 @@
     "export": "cd ../browser && glts export public/rigs/horse.glts -o ../node/horse.skinned.glb"
   },
   "dependencies": {
-    "@drawcall/glts": "^2.0.0",
+    "@drawcall/glts": "^6.0.0",
     "@drawcall/rig": "workspace:*",
     "three": "^0.186.1"
   }

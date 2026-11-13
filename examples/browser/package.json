@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@drawcall/glts": "^2.0.0",
+    "@drawcall/glts": "^6.0.0",
     "@drawcall/rig": "workspace:*",
     "three": "^0.186.1"
   },
@@ -16,6 +16,6 @@
     "@types/three": "^0.186.0",
     "typescript": "^5.9.3",
     "vite": "^8.3.1",
-    "vitecache": "^0.1.1"
+    "vitecache": "^0.5.1"
   }
 }

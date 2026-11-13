@@ -35,7 +35,7 @@ export interface SkinReport {
   closed: boolean
   /**
    * The enclosed volume in cubic world units (the model's own units under an unscaled container, as with
-   * RigLoader; m³ for a model in meters), exact for the triangles. Null when the mesh is not closed.
+   * CachedRigLoader; m³ for a model in meters), exact for the triangles. Null when the mesh is not closed.
    */
   volume: number | null
 }

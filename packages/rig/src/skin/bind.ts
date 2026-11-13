@@ -11,7 +11,7 @@ import { assertTRS } from './rest.js'
 
 /**
  * Binds every mesh under a container `object` (such as a Scene or Group) to a skeleton: either the bone
- * tree under a root `THREE.Bone`, or the skeleton as data, built into bones as RigLoader does (find a bound
+ * tree under a root `THREE.Bone`, or the skeleton as data, built into bones as CachedRigLoader does (find a bound
  * bone afterwards with `object.getObjectByName`). Either way the bound bones are those very objects:
  * computes skin weights from a snapshot in a worker and replaces each mesh
  * with a THREE.SkinnedMesh at the scene root (vertices baked into that root's coordinates, preserving

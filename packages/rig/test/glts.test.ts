@@ -16,9 +16,9 @@ try {
   const file = join(directory, 'fox.glts')
   await writeFile(file, `
 import { isPreview, loadingManager, onDispose, scene } from '@drawcall/glts'
-import { RigLoader, weights } from '@drawcall/rig'
+import { CachedRigLoader, weights } from '@drawcall/rig'
 import { SkeletonHelper } from 'three'
-const rig = await new RigLoader(loadingManager).loadAsync({
+const rig = await new CachedRigLoader(loadingManager).loadAsync({
   url: ${JSON.stringify(model)},
   skeleton: [
     { name: 'Body', position: [0, 40, 0] },

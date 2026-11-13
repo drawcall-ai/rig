@@ -7,10 +7,10 @@ Keep the rig definition in an editable [GLTS](https://github.com/drawcall-ai/glt
 ```ts
 // character.glts
 import { loadingManager, onDispose, scene } from '@drawcall/glts'
-import { RigLoader } from '@drawcall/rig'
+import { CachedRigLoader } from '@drawcall/rig'
 
-const rig = await new RigLoader(loadingManager).loadAsync({
-  url: new URL('./character.glb', import.meta.url),
+const rig = await new CachedRigLoader(loadingManager).loadAsync({
+  url: './character.glb',
   skeleton: [
     { name: 'Root', position: [0, 0, 0] },
     { name: 'Tip_End', parent: 'Root', position: [0, 1, 0] },
@@ -22,7 +22,7 @@ onDispose(() => rig.dispose())
 console.log(rig.report)
 ```
 
-Install `@drawcall/rig @drawcall/glts three`. Use the packaged [rig skill](skills/rig/SKILL.md) for the measurement, skeleton, and deformation workflow, and the [glts skill](https://github.com/drawcall-ai/glts/blob/main/packages/glts/skills/glts/SKILL.md) for rendering and export. Skills ship with their packages under `skills/`.
+Install `@drawcall/rig @drawcall/glts three vitecache`. Add the `vitecache()` Vite plugin from `vitecache/vite` so apps precompute weights for loads in their source and in `.glts` assets under `public/` during development and builds, instead of in the browser. Use the packaged [rig skill](skills/rig/SKILL.md) for the measurement, skeleton, and deformation workflow, and the [glts skill](https://github.com/drawcall-ai/glts/blob/main/packages/glts/skills/glts/SKILL.md) for rendering and export. Skills ship with their packages under `skills/`.
 
 Skinning uses WebAssembly in workers. To enable parallel computation in browsers, serve over HTTPS (or localhost) with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. Pages without shared-memory support use the same solver in one worker. Node.js enables parallel computation automatically.
 

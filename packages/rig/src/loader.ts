@@ -1,4 +1,4 @@
-import { FileLoader, Loader, LoaderUtils, SkinnedMesh, type Skeleton, type AnimationClip, type Group } from 'three'
+import { FileLoader, Loader, LoaderUtils, SkinnedMesh, type Skeleton, type AnimationClip, type Group, type LoadingManager } from 'three'
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'meshoptimizer'
 import { boneTree } from './bone.js'
@@ -11,6 +11,7 @@ import { requireTextures } from './gltf/textures.js'
 import { checkResolution } from './measure/voxelize.js'
 
 export interface RigRequest {
+  /** Resolves against the loader's path and manager; in Node, a root path such as `/model.glb` reads from the vitecache plugin's publicDir, or else `public/` in the working directory. */
   url: string | URL
   /** Serialized bones in model space. List children in segment order: the first child ends its parent's segment. */
   skeleton: readonly SkeletonBone[]
@@ -28,12 +29,24 @@ export interface RigResult {
   dispose(): void
 }
 
+export interface CacheOptions {
+  /** The URL browsers read cached weights from, including any Vite base, such as `/app/_vitecache/`. Defaults to `/_vitecache/`. */
+  cachePath?: string
+}
+
 export interface LoadedGLTF extends GLTF {
   data: ArrayBuffer
 }
 
 /** Loads a glTF and rigs a fresh scene, reusing cached weights for unchanged input. */
-export class RigLoader extends Loader<RigResult, RigRequest> {
+export class CachedRigLoader extends Loader<RigResult, RigRequest> {
+  private readonly cachePath: string | undefined
+
+  constructor(manager?: LoadingManager, { cachePath }: CacheOptions = {}) {
+    super(manager)
+    this.cachePath = cachePath
+  }
+
   override load(request: RigRequest, onLoad: (result: RigResult) => void, onProgress?: (event: ProgressEvent) => void, onError?: (error: unknown) => void): void {
     const url = String(request.url)
     this.manager.itemStart(url)
@@ -67,27 +80,27 @@ export class RigLoader extends Loader<RigResult, RigRequest> {
       .setRequestHeader(loader.requestHeader)
       .setWithCredentials(loader.withCredentials)
       .loadAsync(input, onProgress)
-    if (!(data instanceof ArrayBuffer)) throw new Error('RigLoader expected binary model data')
+    if (!(data instanceof ArrayBuffer)) throw new Error('CachedRigLoader expected binary model data')
     return { ...await loader.parseAsync(data, resourcePath), data }
   }
 
   private async rig(request: RigRequest, url: string, onProgress?: (event: ProgressEvent) => void): Promise<RigResult> {
     const resolution = request.resolution ?? 128
-    checkResolution(resolution, 'RigLoader resolution')
+    checkResolution(resolution, 'CachedRigLoader resolution')
     const root = boneTree(request.skeleton)
     const source = await this.read(url, onProgress)
     const { scene } = source
     const resources = new Resources()
     source.scenes.forEach((entry) => resources.collect(entry))
     try {
-      const report = await bind(scene, root, resolution, cachedWeights(source.data))
+      const report = await bind(scene, root, resolution, cachedWeights(source.data, this.cachePath))
       resources.collect(scene)
       let skeleton: Skeleton | undefined
       scene.traverse((entry) => {
         entry.animations = []
         if (entry instanceof SkinnedMesh) skeleton = entry.skeleton
       })
-      if (!skeleton) throw new Error('RigLoader source contains no meshes to rig')
+      if (!skeleton) throw new Error('CachedRigLoader source contains no meshes to rig')
       return { scene, skeleton, report, animations: [], dispose: () => resources.dispose() }
     } catch (error) {
       resources.collect(scene)

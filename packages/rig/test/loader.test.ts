@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createCanvas } from '@napi-rs/canvas'
 import { CylinderGeometry, DataTexture, LoadingManager, MeshStandardMaterial, SkinnedMesh } from 'three'
-import { RigLoader, type RigRequest, type SkeletonBone } from '../dist/node.js'
+import { CachedRigLoader, type RigRequest, type SkeletonBone } from '../dist/node.js'
 
 const directory = await mkdtemp(join(tmpdir(), 'rig-loader-'))
 const cwd = process.cwd()
@@ -35,7 +35,7 @@ try {
   let progress = 0
   const manager = new LoadingManager()
   manager.onError = () => errors++
-  const loader = new RigLoader(manager).setPath(`${directory}/`)
+  const loader = new CachedRigLoader(manager).setPath(`${pathToFileURL(directory).href}/`)
   const [first, second] = await Promise.all([
     loader.loadAsync({ url: 'model.gltf', skeleton, resolution: 64 }, () => progress++),
     loader.loadAsync({ url: pathToFileURL(join(directory, 'model.gltf')), skeleton, resolution: 64 }),
@@ -67,8 +67,10 @@ try {
   first.dispose()
   assert.equal(disposals, disposed, 'disposal is idempotent')
   second.dispose()
-  const absolute = await new RigLoader().setPath('missing-directory/').loadAsync({ url: join(directory, 'model.gltf'), skeleton, resolution: 16 })
-  absolute.dispose()
+  await mkdir(join(directory, 'public'), { recursive: true })
+  for (const name of ['model.gltf', 'mesh.bin', 'texture.png']) await copyFile(join(directory, name), join(directory, 'public', name))
+  const served = await new CachedRigLoader().setPath('/').loadAsync({ url: 'model.gltf', skeleton, resolution: 16 })
+  served.dispose()
 
   await assert.rejects(loader.loadAsync({ url: 'missing.glb', skeleton, resolution: 16 }), /ENOENT/)
   assert.equal(errors, 1)
@@ -88,7 +90,7 @@ try {
     return new Response(await readFile(join(directory, url.pathname.slice(1))))
   }
   try {
-    const remote = await new RigLoader().setWithCredentials(true).loadAsync({ url: 'https://rig.test/model.gltf', skeleton, resolution: 16 })
+    const remote = await new CachedRigLoader().setWithCredentials(true).loadAsync({ url: 'https://rig.test/model.gltf', skeleton, resolution: 16 })
     remote.dispose()
     assert.equal(credentials.length, 3)
     assert.ok(credentials.every((value) => value === 'include'), 'credentials propagate to model, buffer and texture')
@@ -103,7 +105,7 @@ try {
   await writeFile(join(directory, 'corrupt-texture.gltf'), originalModel.replace('texture.png', 'corrupt.png'))
   await assert.rejects(loader.loadAsync({ url: 'corrupt-texture.gltf', skeleton, resolution: 16 }), /source textures failed/)
 
-  const fox = await new RigLoader().loadAsync({
+  const fox = await new CachedRigLoader().loadAsync({
     url: new URL('./fixtures/fox.glb', import.meta.url),
     skeleton: [{ name: 'body', position: [0, 10, 0] }, { name: 'tip', parent: 'body', position: [0, 100, 0] }],
     resolution: 16,
@@ -115,7 +117,7 @@ try {
   assert.ok(textured, 'embedded GLB texture loads without browser globals')
   fox.dispose()
   geometry.dispose()
-  console.log('RigLoader Node resources, concurrent rigs, ownership and failures ok')
+  console.log('CachedRigLoader Node resources, concurrent rigs, ownership and failures ok')
 } finally {
   process.chdir(cwd)
   await rm(directory, { recursive: true, force: true })

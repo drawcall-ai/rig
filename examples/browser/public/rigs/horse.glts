@@ -1,9 +1,9 @@
 import * as THREE from 'three'
-import { RigLoader } from '@drawcall/rig'
+import { CachedRigLoader } from '@drawcall/rig'
 import { isPreview, loadingManager, onDispose, scene } from '@drawcall/glts'
 
-const rig = await new RigLoader(loadingManager).loadAsync({
-  url: new URL('./horse.glb', import.meta.url),
+const rig = await new CachedRigLoader(loadingManager).loadAsync({
+  url: './horse.glb',
   skeleton: [
     {"name": "hips", "position": [0, 116, -72]},
     {"name": "hips_end", "parent": "hips", "position": [0, 124, -98]},

@@ -3,6 +3,7 @@ import { isAbsolute, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createCanvas, loadImage } from '@napi-rs/canvas'
 import { DataTexture, LoaderUtils, type LoadingManager } from 'three'
+import { publicURL } from 'vitecache'
 import type { GLTFLoader, GLTFParser } from 'three/addons/loaders/GLTFLoader.js'
 import type { LoadedGLTF } from '../loader.js'
 
@@ -19,7 +20,9 @@ export async function readGLTF(loader: GLTFLoader, input: string | URL, onProgre
   return { ...await loader.parseAsync(data, base), data }
 }
 
+/** A root path such as `/models/fox.glb` is served from publicDir, as in browsers; other paths are relative to the working directory. */
 function canonicalURL(input: string): URL {
+  if (input.startsWith('/')) return new URL(publicURL(input))
   return !isAbsolute(input) && /^[a-z][a-z\d+.-]*:/i.test(input) ? new URL(input) : pathToFileURL(resolve(input))
 }
 
@@ -29,19 +32,19 @@ async function bytes(url: URL, headers: Record<string, string>, credentials: boo
     return Uint8Array.from(data).buffer
   }
   const response = await fetch(url, { headers, credentials: credentials ? 'include' : 'same-origin' })
-  if (!response.ok) throw new Error(`RigLoader: ${response.status} ${response.statusText} loading ${url}`)
+  if (!response.ok) throw new Error(`CachedRigLoader: ${response.status} ${response.statusText} loading ${url}`)
   return response.arrayBuffer()
 }
 
 function record(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('RigLoader: invalid glTF resource definition')
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('CachedRigLoader: invalid glTF resource definition')
   return Object.fromEntries(Object.entries(value))
 }
 
 function resource(parser: GLTFParser, kind: string, index: number): Record<string, unknown> {
   const json: unknown = parser.json
   const list = record(json)[kind]
-  if (!Array.isArray(list)) throw new Error(`RigLoader: missing glTF ${kind}`)
+  if (!Array.isArray(list)) throw new Error(`CachedRigLoader: missing glTF ${kind}`)
   return record(list[index])
 }
 
@@ -50,7 +53,7 @@ function resources(parser: GLTFParser, credentials: boolean): { name: string } {
   parser.loadBuffer = (index) => {
     const uri = resource(parser, 'buffers', index).uri
     if (uri === undefined) return original(index)
-    if (typeof uri !== 'string') throw new Error('RigLoader: buffer uri must be a string')
+    if (typeof uri !== 'string') throw new Error('CachedRigLoader: buffer uri must be a string')
     return readResource(parser, uri, credentials)
   }
   const cache = new Map<number, Promise<DataTexture>>()
@@ -84,10 +87,10 @@ async function image(parser: GLTFParser, index: number, credentials: boolean): P
   let data: ArrayBuffer
   if (typeof source.bufferView === 'number') {
     const dependency: unknown = await parser.getDependency('bufferView', source.bufferView)
-    if (!(dependency instanceof ArrayBuffer)) throw new Error(`RigLoader: image ${index} bufferView is not binary data`)
+    if (!(dependency instanceof ArrayBuffer)) throw new Error(`CachedRigLoader: image ${index} bufferView is not binary data`)
     data = dependency
   } else if (typeof source.uri === 'string') data = await readResource(parser, source.uri, credentials)
-  else throw new Error(`RigLoader: image ${index} has neither a uri nor a bufferView`)
+  else throw new Error(`CachedRigLoader: image ${index} has neither a uri nor a bufferView`)
   const decoded = await loadImage(Buffer.from(data))
   const context = createCanvas(decoded.width, decoded.height).getContext('2d')
   context.drawImage(decoded, 0, 0)

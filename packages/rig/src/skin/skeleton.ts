@@ -15,7 +15,7 @@ export interface SkeletonBone<Name extends string = string> {
   readonly name: Name
   /** Name of the parent bone; omit for a root. */
   readonly parent?: NoInfer<Name>
-  /** Absolute joint position, including children. RigLoader interprets it in model coordinates. */
+  /** Absolute joint position, including children. CachedRigLoader interprets it in model coordinates. */
   readonly position: Vec3
   /**
    * Rigid attachments: indices of separate mesh pieces (see pieces()) bound 100% to this bone,

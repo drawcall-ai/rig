@@ -325,7 +325,7 @@ import { makeCapsule } from './capsule.js'
   console.log('fully rigid rigs bind all pieces without voxelization and reject unassigned geometry')
 }
 
-// A skeleton given as data is built and bound as RigLoader does; three's own lookup finds the bound bones
+// A skeleton given as data is built and bound as CachedRigLoader does; three's own lookup finds the bound bones
 {
   const capsule = makeCapsule()
   const geometry = new THREE.BufferGeometry()

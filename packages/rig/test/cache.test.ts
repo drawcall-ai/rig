@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import { LoadingManager, SkinnedMesh } from 'three'
-import { RigLoader, type RigResult, type SkeletonBone } from '../dist/node.js'
+import { CachedRigLoader, type RigResult, type SkeletonBone } from '../dist/node.js'
 import { makeCapsule } from './capsule.js'
 
 const directory = await mkdtemp(join(tmpdir(), 'rig-cache-'))
@@ -36,11 +36,11 @@ try {
     { name: 'body', position: [0, 10, 0] },
     { name: 'tip', parent: 'body', position: [0, 100, 0] },
   ]
-  const loader = new RigLoader().setPath(`${models}/`)
+  const loader = new CachedRigLoader().setPath(`${pathToFileURL(models).href}/`)
   const run = (resolution = 16) => loader.loadAsync({ url: 'model.glb', skeleton, resolution })
   const first = await run()
   assert.equal(jobs, 1, 'a model outside the cache project computes without GLTS')
-  const second = await new RigLoader().loadAsync({ url: pathToFileURL(file), skeleton, resolution: 16 })
+  const second = await new CachedRigLoader().loadAsync({ url: pathToFileURL(file), skeleton, resolution: 16 })
   assert.equal(jobs, 1, 'identical bytes reuse weights through a different URL spelling')
   assert.deepEqual(second.report, first.report)
   assert.deepEqual(weights(second), weights(first), 'binary weights round-trip exactly')
@@ -73,7 +73,7 @@ try {
     modifications++
     return url.replace('alias.glb', 'model.glb')
   })
-  const alias = await new RigLoader(manager).setPath(`${models}/`).loadAsync({ url: 'alias.glb', skeleton, resolution: 16 })
+  const alias = await new CachedRigLoader(manager).setPath(`${pathToFileURL(models).href}/`).loadAsync({ url: 'alias.glb', skeleton, resolution: 16 })
   alias.dispose()
   assert.equal(modifications, 1, 'the loading manager resolves the main URL once')
   assert.equal(jobs, 4, 'a URL modifier shares the entry for the actual loaded bytes')
@@ -86,7 +86,7 @@ try {
     return new Response(data)
   }
   try {
-    const remote = await new RigLoader().setWithCredentials(true).loadAsync({ url: 'https://rig.test/model.glb', skeleton, resolution: 16 })
+    const remote = await new CachedRigLoader().setWithCredentials(true).loadAsync({ url: 'https://rig.test/model.glb', skeleton, resolution: 16 })
     remote.dispose()
     assert.equal(reads, 1, 'source hashing reuses the bytes already fetched')
     assert.equal(jobs, 4, 'remote and local copies of the same model share weights')

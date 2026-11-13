@@ -8,16 +8,16 @@ description: Rig glTF/GLB models for animation as editable .glts assets with @dr
 Deliver a `.glts` asset containing the model reference, serialized skeleton, and rigging request, together with its source model. Rig computes weights; glts executes the asset, renders checks, and exports GLB. Read the installed glts skill at `node_modules/@drawcall/glts/skills/glts/SKILL.md` for that workflow and resource lifecycle ([upstream skill](https://github.com/drawcall-ai/glts/blob/main/packages/glts/skills/glts/SKILL.md)).
 
 ```sh
-npm install @drawcall/rig @drawcall/glts three
+npm install @drawcall/rig @drawcall/glts three vitecache
 ```
 
 ## Inspect before defining joints
 
-Start with an inspection `.glts` using Three.js `GLTFLoader` with glts's `loadingManager`. Resolve the model URL against `import.meta.url`, add the model beneath `scene`, and supply preview lights. Render orthographic side, front, and top views to identify anatomy and facing direction. Focus on small articulated regions before choosing their controls; full-body views can hide fingers or wing rays.
+Start with an inspection `.glts` using Three.js `GLTFLoader` with glts's `loadingManager`. Add the model beneath `scene` and supply preview lights. Render orthographic side, front, and top views to identify anatomy and facing direction. Focus on small articulated regions before choosing their controls; full-body views can hide fingers or wing rays.
 
 The creature's own left is `up × forward`: facing +z, left is +x; facing +x, left is -z. Naming sides from the camera's left silently swaps the rig.
 
-Use `THREE.Box3` for bounds, `pieces()` for connected geometry, and batched `section()` samples for interior limb coordinates. When sections merge a feature with its surroundings, use `pick()` sweeps across it: thickness peaks help distinguish wing rods from membranes. Batch nearby samples rather than voxelizing per point. When samples miss a supposed rod, sweep nearby positions before guessing depth or raising resolution. Mirror joint positions only after checking the opposite side; posed models can have different curves and depth.
+Generated models often arrive at an arbitrary size and facing, with a million triangles or more: check bounds and triangle count first, and bake any size, facing or simplification the app needs into the model before rigging, since the skeleton is measured on that geometry. Use `THREE.Box3` for bounds, `pieces()` for connected geometry, and batched `section()` samples for interior limb coordinates. When sections merge a feature with its surroundings, use `pick()` sweeps across it: thickness peaks help distinguish wing rods from membranes. Batch nearby samples rather than voxelizing per point. When samples miss a supposed rod, sweep nearby positions before guessing depth or raising resolution. Mirror joint positions only after checking the opposite side; posed models can have different curves and depth.
 
 ## Author the asset
 
@@ -25,10 +25,10 @@ Use `THREE.Box3` for bounds, `pieces()` for connected geometry, and batched `sec
 // character.glts — coordinates below illustrate the pattern; measure your model.
 import * as THREE from 'three'
 import { isPreview, loadingManager, onDispose, scene } from '@drawcall/glts'
-import { RigLoader } from '@drawcall/rig'
+import { CachedRigLoader } from '@drawcall/rig'
 
-const rig = await new RigLoader(loadingManager).loadAsync({
-  url: new URL('./character.glb', import.meta.url),
+const rig = await new CachedRigLoader(loadingManager).loadAsync({
+  url: './character.glb',
   skeleton: [
     { name: 'Hips', position: [0, 0.9, 0] },
     { name: 'Spine', parent: 'Hips', position: [0, 1.1, 0] },
@@ -50,9 +50,9 @@ if (isPreview) {
 }
 ```
 
-Use `RigLoader` to load and rig a glTF/GLB URL. It caches weights automatically from the model contents, skeleton, and resolution; it does not depend on the surrounding script. For an existing or procedural object, use `skin()` directly: pass a skeleton list when joints are data, or build bones with `bone()` when joints are built in code. Rebuild from the original model on each iteration: re-skinning the previous result compounds its deformation.
+Use `CachedRigLoader` to load and rig a glTF/GLB URL. It caches weights automatically from the model contents, skeleton, and resolution; it does not depend on the surrounding script. For an existing or procedural object, use `skin()` directly: pass a skeleton list when joints are data, or build bones with `bone()` when joints are built in code. Rebuild from the original model on each iteration: re-skinning the previous result compounds its deformation.
 
-Add the `vitecache` Vite plugin to browser hosts that generate cached weights; Node writes caches directly without Vite. Follow its [cache workflow](https://github.com/drawcall-ai/vitecache/blob/main/packages/vitecache/skills/vitecache/SKILL.md) for deployment and sharing precomputed caches. Each load still creates a fresh scene; unchanged models and rig settings reuse the expensive weight computation.
+In a Vite app, add the `vitecache()` plugin: it finds each `new CachedRigLoader(...).loadAsync({...})` in the app's source files and in `.glts` assets under `public/`, computes its weights in Node during development and builds, and deletes cached weights no load uses. Browsers only read them; a load the plugin cannot see, such as one in a `.glts` outside `public/`, recomputes in every browser session. So write the request as literal JSON: an expression such as `new URL('./character.glb', import.meta.url)` fails the build. A model URL relative to the script, as above, works in a `.glts` under `public/`; in app source, pass its root path under `public/`, such as `/models/character.glb`. When the app is deployed under a Vite `base`, browsers miss unless the loader gets the cache's URL with it, `` new CachedRigLoader(loadingManager, { cachePath: `${import.meta.env.BASE_URL}_vitecache/` }) ``, and root model paths lack the base, so load from a `.glts` under `public/` with a relative URL. Outside Vite, Node computes and saves directly. Follow the installed vitecache skill at `node_modules/vitecache/skills/vitecache/SKILL.md` for deployment. Each load still creates a fresh scene; unchanged models and rig settings reuse the expensive weight computation.
 
 Skinning reads joints and mesh in world space. Skin the model unscaled at the origin, then place it: a model moved first no longer matches a skeleton measured in model coordinates.
 
@@ -60,7 +60,7 @@ Skinning reads joints and mesh in world space. Skin the model unscaled at the or
 
 For smooth deformation, a segment runs from its joint to its first child. List the continuation child before branches (Hips → Spine before legs). End each deforming chain with a tip joint: a hand without a child has no segment to attract smooth weights.
 
-For smooth weighting, place joints inside the solid, centered in limb cross-sections; rigid pivots can sit in gaps between components. All serialized positions use the same model coordinate system, including children; do not subtract parent positions. Give humanoids Mixamo anatomical names for later retargeting; newly generated bones do not make source animation clips compatible. Other creatures benefit from clear anatomical names.
+For smooth weighting, place joints inside the solid, centered in limb cross-sections; rigid pivots can sit in gaps between components. All serialized positions use the same model coordinate system, including children; do not subtract parent positions. Name a humanoid's bones for what will drive them: a runtime that animates the skeleton may require its own names, as @drawcall/animate does for humanoids (see its [animate skill](https://github.com/drawcall-ai/animate/blob/main/packages/animate/skills/animate/SKILL.md)), while Mixamo names (`Hips`, `Spine`, `LeftArm`, …) suit retargeting Mixamo clips. Newly generated bones do not make source animation clips compatible. Other creatures benefit from clear anatomical names.
 
 Choose controls from intended movement and visible anatomy, rather than connectivity or material. One connected metal hand can span the wrist, palm, and fingers; treating it as one rigid piece loses those articulations. Preserve useful controls when balancing warning count against iteration speed.
 

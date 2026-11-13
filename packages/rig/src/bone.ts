@@ -17,7 +17,7 @@ export function bone(name: string, world: Vec3, parent?: THREE.Bone): THREE.Bone
 /**
  * The root of the bone tree a serialized skeleton describes, ready for skin(): one bone() per entry at its
  * absolute position, linked by parent name, with a copy of its `pieces` in `userData.pieces`. Validates the
- * skeleton as skin() does and requires exactly one root. skin() and RigLoader build bones from data with it.
+ * skeleton as skin() does and requires exactly one root. skin() and CachedRigLoader build bones from data with it.
  */
 export function boneTree<Name extends string>(skeleton: readonly SkeletonBone<Name>[]): THREE.Bone {
   const resolved = resolveSkeleton(skeleton)
