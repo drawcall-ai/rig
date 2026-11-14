@@ -1,34 +1,27 @@
 # @drawcall/rig
 
-Three.js rigging runtime for browsers and Node.js. Load a glTF model with a serialized skeleton to compute skin weights, or measure and skin an existing Three.js object.
-
-Keep the rig definition in an editable [GLTS](https://github.com/drawcall-ai/glts) asset. GLTS handles execution, rendering, and GLB export.
+Three.js rigging runtime for browsers and Node.js. Rig a glTF model or procedural object from a serialized skeleton with cached skin weights, or measure and skin an existing Three.js object.
 
 ```ts
-// character.glts
-import { loadingManager, onDispose, scene } from '@drawcall/glts'
 import { CachedRigLoader } from '@drawcall/rig'
 
-const rig = await new CachedRigLoader(loadingManager).loadAsync({
-  url: './character.glb',
+const rig = await new CachedRigLoader().loadAsync({
+  object: async () => {
+    const { ModelLoader } = await import('@drawcall/rig')
+    return (await new ModelLoader().loadAsync('character.glb')).scene
+  },
   skeleton: [
     { name: 'Root', position: [0, 0, 0] },
     { name: 'Tip_End', parent: 'Root', position: [0, 1, 0] },
   ],
   resolution: 128,
 })
-scene.add(rig.scene)
-onDispose(() => rig.dispose())
+scene.add(rig.object)
 console.log(rig.report)
 ```
 
-Install `@drawcall/rig @drawcall/glts three vitecache`. Add the `vitecache()` Vite plugin from `vitecache/vite` so apps precompute weights for loads in their source and in `.glts` assets under `public/` during development and builds, instead of in the browser. Use the packaged [rig skill](skills/rig/SKILL.md) for the measurement, skeleton, and deformation workflow, and the [glts skill](https://github.com/drawcall-ai/glts/blob/main/packages/glts/skills/glts/SKILL.md) for rendering and export. Skills ship with their packages under `skills/`.
+Install `@drawcall/rig three vitecache`. Add the `vitecache()` Vite plugin from `vitecache/vite` so apps compute weights for the loads in their source during development and builds, instead of in the browser. Use the packaged [rig skill](skills/rig/SKILL.md) for the measurement, skeleton, and deformation workflow. Skills ship with their packages under `skills/`.
 
 Skinning uses WebAssembly in workers. To enable parallel computation in browsers, serve over HTTPS (or localhost) with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. Pages without shared-memory support use the same solver in one worker. Node.js enables parallel computation automatically.
 
 If you use a Content-Security-Policy, permit the worker URLs in `worker-src` and allow WebAssembly compilation with `'wasm-unsafe-eval'` in any `script-src` policy applied to the workers. See [CSP and WebAssembly](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src#unsafe_webassembly_execution).
-
-```sh
-npx drawcall glts render character.glts -o preview.png
-npx drawcall glts export character.glts -o character.rigged.glb
-```

@@ -1,34 +1,35 @@
 ---
 name: rig
-description: Rig glTF/GLB models for animation as editable .glts assets with @drawcall/rig. Use when asked to rig, skin, add a skeleton or armature, make a mesh animatable, or skin a model at runtime in a three.js app from a serialized skeleton. Pair with the glts skill for loading, rendering, and exporting. Not for modeling or animating an already suitable rig.
+description: Rig glTF/GLB models and procedural three.js objects for animation with @drawcall/rig, as a cached rig load in a Vite app's source. Use when asked to rig, skin, add a skeleton or armature, make a mesh animatable, or skin a model at runtime in a three.js app from a serialized skeleton. Not for modeling or animating an already suitable rig.
 ---
 
 # Rigging a model
 
-Deliver a `.glts` asset containing the model reference, serialized skeleton, and rigging request, together with its source model. Rig computes weights; glts executes the asset, renders checks, and exports GLB. Read the installed glts skill at `node_modules/@drawcall/glts/skills/glts/SKILL.md` for that workflow and resource lifecycle ([upstream skill](https://github.com/drawcall-ai/glts/blob/main/packages/glts/skills/glts/SKILL.md)).
+Deliver a literal `new CachedRigLoader().loadAsync({ ... })` in the app's source, holding the serialized skeleton and an inline function that creates the model, together with the model files it loads. Rig computes the weights; the vitecache plugin computes them during development and builds so browsers only read them.
 
 ```sh
-npm install @drawcall/rig @drawcall/glts three vitecache
+npm install @drawcall/rig three vitecache
 ```
 
 ## Inspect before defining joints
 
-Start with an inspection `.glts` using Three.js `GLTFLoader` with glts's `loadingManager`. Add the model beneath `scene` and supply preview lights. Render orthographic side, front, and top views to identify anatomy and facing direction. Focus on small articulated regions before choosing their controls; full-body views can hide fingers or wing rays.
+Load the model with rig's `ModelLoader`, which reads in Node as in browsers, and measure it in a Node script or in the running app. Render views with [vitexec](https://github.com/drawcall-ai/vitexec/blob/main/packages/vitexec/skills/vitexec/SKILL.md) scripts in the app's page: a script imports what it inspects by root path, such as `import { character } from '/src/character.ts'`, and renders it with its own renderer and cameras before taking the screenshot. Use orthographic side, front, and top views to identify anatomy and facing direction. Focus on small articulated regions before choosing their controls; full-body views can hide fingers or wing rays.
 
 The creature's own left is `up × forward`: facing +z, left is +x; facing +x, left is -z. Naming sides from the camera's left silently swaps the rig.
 
-Generated models often arrive at an arbitrary size and facing, with a million triangles or more: check bounds and triangle count first, and bake any size, facing or simplification the app needs into the model before rigging, since the skeleton is measured on that geometry. Use `THREE.Box3` for bounds, `pieces()` for connected geometry, and batched `section()` samples for interior limb coordinates. When sections merge a feature with its surroundings, use `pick()` sweeps across it: thickness peaks help distinguish wing rods from membranes. Batch nearby samples rather than voxelizing per point. When samples miss a supposed rod, sweep nearby positions before guessing depth or raising resolution. Mirror joint positions only after checking the opposite side; posed models can have different curves and depth.
+Generated models often arrive at an arbitrary size and facing, with a million triangles or more: check bounds and triangle count first, and bake any size, facing or simplification the app needs into the geometry the load creates, since the skeleton is measured on that geometry. Use `THREE.Box3` for bounds, `pieces()` for connected geometry, and batched `section()` samples for interior limb coordinates. When sections merge a feature with its surroundings, use `pick()` sweeps across it: thickness peaks help distinguish wing rods from membranes. Batch nearby samples rather than voxelizing per point. When samples miss a supposed rod, sweep nearby positions before guessing depth or raising resolution. Mirror joint positions only after checking the opposite side; posed models can have different curves and depth.
 
-## Author the asset
+## Author the load
 
 ```ts
-// character.glts — coordinates below illustrate the pattern; measure your model.
-import * as THREE from 'three'
-import { isPreview, loadingManager, onDispose, scene } from '@drawcall/glts'
+// src/character.ts — coordinates below illustrate the pattern; measure your model.
 import { CachedRigLoader } from '@drawcall/rig'
 
-const rig = await new CachedRigLoader(loadingManager).loadAsync({
-  url: './character.glb',
+export const character = () => new CachedRigLoader().loadAsync({
+  object: async () => {
+    const { ModelLoader } = await import('@drawcall/rig')
+    return (await new ModelLoader().loadAsync('models/character.glb')).scene
+  },
   skeleton: [
     { name: 'Hips', position: [0, 0.9, 0] },
     { name: 'Spine', parent: 'Hips', position: [0, 1.1, 0] },
@@ -38,23 +39,13 @@ const rig = await new CachedRigLoader(loadingManager).loadAsync({
   ],
   resolution: 128,
 })
-scene.add(rig.scene)
-onDispose(() => rig.dispose())
-console.log(JSON.stringify(rig.report))
-
-if (isPreview) {
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2.5))
-  const light = new THREE.DirectionalLight(0xffffff, 2)
-  light.position.set(2, 4, 3)
-  scene.add(light)
-}
 ```
 
-Use `CachedRigLoader` to load and rig a glTF/GLB URL. It caches weights automatically from the model contents, skeleton, and resolution; it does not depend on the surrounding script. For an existing or procedural object, use `skin()` directly: pass a skeleton list when joints are data, or build bones with `bone()` when joints are built in code. Rebuild from the original model on each iteration: re-skinning the previous result compounds its deformation.
+`rig.object` is the created model, its meshes bound to the new skeleton; add it to the scene and call `rig.dispose()` when removing it. Each load creates and rigs a fresh object, so iterating on the skeleton always starts from the original model rather than compounding the previous result's deformation. For an object that exists only at runtime, use `skin()` directly, which computes on every call: pass a skeleton list when joints are data, or build bones with `bone()` when joints are built in code.
 
-In a Vite app, add the `vitecache()` plugin: it finds each `new CachedRigLoader(...).loadAsync({...})` in the app's source files and in `.glts` assets under `public/`, computes its weights in Node during development and builds, and deletes cached weights no load uses. Browsers only read them; a load the plugin cannot see, such as one in a `.glts` outside `public/`, recomputes in every browser session. So write the request as literal JSON: an expression such as `new URL('./character.glb', import.meta.url)` fails the build. A model URL relative to the script, as above, works in a `.glts` under `public/`; in app source, pass its root path under `public/`, such as `/models/character.glb`. When the app is deployed under a Vite `base`, browsers miss unless the loader gets the cache's URL with it, `` new CachedRigLoader(loadingManager, { cachePath: `${import.meta.env.BASE_URL}_vitecache/` }) ``, and root model paths lack the base, so load from a `.glts` under `public/` with a relative URL. Outside Vite, Node computes and saves directly. Follow the installed vitecache skill at `node_modules/vitecache/skills/vitecache/SKILL.md` for deployment. Each load still creates a fresh scene; unchanged models and rig settings reuse the expensive weight computation.
+Add the `vitecache()` plugin from `vitecache/vite`, which computes the weights of each load in the app's source in Node during development and builds; a load it cannot see recomputes in every browser session. So write one literal load per model, as above: the skeleton and resolution as JSON, and the `object` function inline, importing what it uses dynamically. Weights are keyed by the geometry the function creates, the skeleton and the resolution, so changing the function without changing that geometry keeps them. Give `ModelLoader` the model's path below `public/` without a leading slash, which also resolves under a Vite `base` for pages at the app's root; under a base, browsers also need the cache's URL: `` new CachedRigLoader({ cachePath: `${import.meta.env.BASE_URL}_vitecache/` }) ``. Follow the installed vitecache skill at `node_modules/vitecache/skills/vitecache/SKILL.md` for the plugin and deployment. Outside Vite, a Node script computes and saves weights directly.
 
-Skinning reads joints and mesh in world space. Skin the model unscaled at the origin, then place it: a model moved first no longer matches a skeleton measured in model coordinates.
+Skinning reads joints and mesh in world space. Return the model untransformed at the origin and place `rig.object` after loading: a model moved first no longer matches a skeleton measured in model coordinates.
 
 ## Choose a skeleton the solver can use
 
@@ -74,26 +65,19 @@ Read the report alongside rendered deformations; neither alone proves quality. B
 
 Use warnings to choose the next measurement or motion check. A suggested joint position is a candidate: confirm it stays inside the intended anatomy and rerun the bend. A control with no dominant vertices can still move weighted children; test that motion before shortening its chain or deleting it. Tiny deforming segments may need higher resolution or fewer, longer segments. Cross-weighting between separate fingers can drag a neighbor, while blending across a wing membrane can be necessary. Inspect individual bends to distinguish them; a lower warning count alone is not improvement.
 
-Keep diagnostics in `isPreview` so export keeps the bind pose and original materials. Use rig's `pose()` for reproducible bends, `weights()` for weight paint, and native `THREE.SkeletonHelper` for the bone overlay. Add this to the preview block to see bone ownership and joints together:
+Keep diagnostics in temporary vitexec scripts rather than in the app, so the app keeps the bind pose and original materials. Use rig's `pose()` for reproducible bends, `weights()` for weight paint, and native `THREE.SkeletonHelper` for the bone overlay. In a script that loaded `rig` and rendered it in its own `scene`, this shows bone ownership and joints together:
 
 ```ts
-pose(rig.scene, { rotations: { Head: [0.6, 0, 0] } })
-const restore = weights(rig.scene)
-onDispose(restore)
-const helper = new THREE.SkeletonHelper(rig.scene)
+pose(rig.object, { rotations: { Head: [0.6, 0, 0] } })
+const restore = weights(rig.object)
+const helper = new THREE.SkeletonHelper(rig.object)
 for (const material of [helper.material].flat()) material.depthTest = false
 helper.renderOrder = 1
 scene.add(helper)
-onDispose(() => helper.dispose())
 ```
 
-Import `pose` and `weights` from `@drawcall/rig`. To isolate a joint's influence, replace the paint call with `weights(rig.scene, 'Head')`. Browser hosts need glts's preview mode (`isPreview: true`); its render command already enables it.
+Import `pose` and `weights` from `@drawcall/rig`. To isolate a joint's influence, replace the paint call with `weights(rig.object, 'Head')`; call `restore()` to return to the original materials.
 
 Check each articulated region by rotating its own joint about 45° and confirming the intended geometry moves. Include small controls such as wrists, fingers, feet, and wing rays; a full-body pose can hide an ineffective joint. Use ownership paint to find competing regions, then a selected-bone heatmap to inspect the suspect influence. Judge the actual deformation in original-material, mesh-only views: overlays and paint can hide collapse or dragging. Also inspect a natural pose from several sides. Targets can avoid guessing bend signs.
 
-```sh
-npx drawcall glts render character.glts -o check.png --views '[[{"camera":"+x"},{"camera":"+z"},{"camera":"persp"}]]'
-npx drawcall glts export character.glts -o character.rigged.glb
-```
-
-Inspect the images, adjust the source skeleton, and rebuild from the original model. When delivering a GLB, reload it and check its bind pose, original materials, and a representative joint bend; success in the source preview does not validate the exported rig. Deliver the `.glts` with its referenced files and disclose remaining deformation limits. Follow the glts skill for export behavior and animation clips.
+Inspect the screenshots, adjust the skeleton in the load, and check again. When delivering a GLB, export `rig.object` in its bind pose with three's `GLTFExporter`, then reload the file and check its bind pose, original materials, and a representative joint bend; success in the app does not validate the exported rig. Deliver the load with its model files and disclose remaining deformation limits.

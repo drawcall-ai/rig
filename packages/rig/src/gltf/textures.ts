@@ -7,7 +7,7 @@ export function requireTextures(parser: GLTFParser): GLTFLoaderPlugin {
   const original = parser.loadTextureImage.bind(parser)
   parser.loadTextureImage = async (textureIndex, sourceIndex, loader) => {
     const texture = await original(textureIndex, sourceIndex, loader)
-    if (!texture) failures.push(new Error(`CachedRigLoader: failed to load texture ${textureIndex} (image ${sourceIndex})`))
+    if (!texture) failures.push(new Error(`ModelLoader: failed to load texture ${textureIndex} (image ${sourceIndex})`))
     return texture
   }
   return {
@@ -16,7 +16,7 @@ export function requireTextures(parser: GLTFParser): GLTFLoaderPlugin {
       if (!failures.length) return
       const resources = new Resources()
       result.scenes.forEach((scene) => resources.collect(scene))
-      resources.fail(new AggregateError(failures, 'CachedRigLoader: source textures failed to load'))
+      resources.fail(new AggregateError(failures, 'ModelLoader: source textures failed to load'))
     },
   }
 }

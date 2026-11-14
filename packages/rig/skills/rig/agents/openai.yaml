@@ -1,4 +1,4 @@
 interface:
   display_name: "rig"
-  short_description: "Rig 3D models as editable GLTS assets"
-  default_prompt: "Use $rig and $glts to measure this model, define its skeleton, compute skin weights, and verify deformation. Deliver the editable .glts asset and its referenced files."
+  short_description: "Rig 3D models with cached skin weights"
+  default_prompt: "Use $rig to measure this model, define its skeleton, compute skin weights, and verify deformation. Deliver the rig load in the app's source and the model files it loads."

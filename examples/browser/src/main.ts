@@ -1,17 +1,25 @@
-/** Loads rigged .glts assets and plays a motion for each creature.
+/** Rigs each creature and plays its motion.
  * URL parameters: tab=<name>, t=<seconds>, xray=1, bones=0, weights=ownership|<bone name>.
  */
 
-import { GLTSLoader, type GLTSScene } from '@drawcall/glts'
-import * as rig from '@drawcall/rig'
+import { weights, type RigResult } from '@drawcall/rig'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { gallop } from './gallop.js'
 import { flap, grip, swim, walk, type Motion } from './motions.js'
+import { dragon } from './rigs/dragon.js'
+import { fish } from './rigs/fish.js'
+import { fox } from './rigs/fox.js'
+import { horse } from './rigs/horse.js'
+import { jeanPhil } from './rigs/jean-phil.js'
+import { parrot } from './rigs/parrot.js'
+import { robot } from './rigs/robot.js'
+import { soldier } from './rigs/soldier.js'
+import { stork } from './rigs/stork.js'
 
 interface Tab {
   name: string
-  url: string
+  rig: () => Promise<RigResult>
   /** Optional local model; hide the tab when the file is absent. */
   model?: string
   motion: (bones: Map<string, THREE.Bone>, root: THREE.Object3D) => Motion
@@ -19,16 +27,16 @@ interface Tab {
 
 const forward = (x: number, z: number) => new THREE.Vector3(x, 0, z)
 const tabs: Tab[] = [
-  { name: 'Horse', url: '/rigs/horse.glts', motion: (_, root) => gallop(root) },
-  { name: 'Parrot', url: '/rigs/parrot.glts', motion: (b) => flap(b, forward(0, 1)) },
-  { name: 'Stork', url: '/rigs/stork.glts', motion: (b) => flap(b, forward(0, 1)) },
-  { name: 'Fish', url: '/rigs/fish.glts', motion: (b) => swim(b) },
-  { name: 'Soldier', url: '/rigs/soldier.glts', motion: (b) => walk(b, forward(0, -1)) },
-  { name: 'Robot', url: '/rigs/robot.glts', motion: (b) => walk(b, forward(0, 1)) },
-  { name: 'Fox', url: '/rigs/fox.glts', model: '/model.glb', motion: (b) => walk(b, forward(1, 0)) },
-  { name: 'Dragon', url: '/rigs/dragon.glts', model: '/dragon.glb', motion: (b) => flap(b, forward(0, 1)) },
+  { name: 'Horse', rig: horse, motion: (_, root) => gallop(root) },
+  { name: 'Parrot', rig: parrot, motion: (b) => flap(b, forward(0, 1)) },
+  { name: 'Stork', rig: stork, motion: (b) => flap(b, forward(0, 1)) },
+  { name: 'Fish', rig: fish, motion: (b) => swim(b) },
+  { name: 'Soldier', rig: soldier, motion: (b) => walk(b, forward(0, -1)) },
+  { name: 'Robot', rig: robot, motion: (b) => walk(b, forward(0, 1)) },
+  { name: 'Fox', rig: fox, model: '/model.glb', motion: (b) => walk(b, forward(1, 0)) },
+  { name: 'Dragon', rig: dragon, model: '/dragon.glb', motion: (b) => flap(b, forward(0, 1)) },
   {
-    name: 'Jean Phil', url: '/rigs/jean-phil.glts', model: '/jean-phil.glb',
+    name: 'Jean Phil', rig: jeanPhil, model: '/jean-phil.glb',
     motion: (b) => {
       const legs = walk(b, forward(1, 0))
       const hands = grip(b, forward(1, 0))
@@ -58,8 +66,6 @@ function select(id: string): HTMLSelectElement {
   return found
 }
 
-const manager = new THREE.LoadingManager()
-const loader = new GLTSLoader(manager, { isPreview: true, modules: { '@drawcall/rig': rig } })
 const view = element('view')
 const status = element('status')
 const play = checkbox('play')
@@ -76,13 +82,13 @@ renderer.setPixelRatio(devicePixelRatio)
 view.append(renderer.domElement)
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x2a2d31)
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2.5), new THREE.DirectionalLight(0xffffff, 1))
 const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 1e5)
 const controls = new OrbitControls(camera, renderer.domElement)
 
 let current: {
-  model: GLTSScene
-  helpers: THREE.SkeletonHelper[]
-  helper?: THREE.SkeletonHelper
+  rig: RigResult
+  helper: THREE.SkeletonHelper
   restoreWeights?: () => void
   motion: Motion
 } | undefined
@@ -94,39 +100,25 @@ async function open(tab: Tab): Promise<void> {
   for (const button of element('tabs').children) button.setAttribute('aria-selected', String(button.textContent === tab.name))
   status.textContent = `loading ${tab.name}…`
   const start = performance.now()
-  const model = await loader.loadAsync(tab.url)
+  const rig = await tab.rig()
   if (ticket !== loading) {
-    model.dispose()
+    rig.dispose()
     return
   }
-  const bones = new Map<string, THREE.Bone>()
-  model.traverse((node) => {
-    if (node instanceof THREE.Bone) bones.set(node.name, node)
-  })
+  for (const warning of rig.report.warnings) console.warn(warning)
+  const model = rig.object
+  const bones = new Map(rig.skeleton.bones.map((bone) => [bone.name, bone]))
   if (current) {
     current.restoreWeights?.()
-    scene.remove(current.model)
-    if (current.helper) {
-      scene.remove(current.helper)
-      current.helper.dispose()
-    }
-    current.model.dispose()
+    scene.remove(current.rig.object, current.helper)
+    current.helper.dispose()
+    current.rig.dispose()
   }
-  const helpers: THREE.SkeletonHelper[] = []
-  model.traverse((node) => {
-    if (node instanceof THREE.SkeletonHelper) helpers.push(node)
-  })
-  const helper = helpers.length ? undefined : new THREE.SkeletonHelper(model)
-  if (helper) {
-    helpers.push(helper)
-    scene.add(helper)
-  }
-  for (const overlay of helpers) {
-    overlay.renderOrder = 1
-    for (const material of [overlay.material].flat()) material.depthTest = false
-  }
-  scene.add(model)
-  current = { model, helpers, helper, motion: tab.motion(bones, model) }
+  const helper = new THREE.SkeletonHelper(model)
+  helper.renderOrder = 1
+  for (const material of [helper.material].flat()) material.depthTest = false
+  scene.add(model, helper)
+  current = { rig, helper, motion: tab.motion(bones, model) }
   paint.replaceChildren(new Option('Original materials', 'original'), new Option('Bone ownership', 'ownership'))
   const group = document.createElement('optgroup')
   group.label = 'Bone heatmap (blue → red)'
@@ -156,8 +148,8 @@ function frame(model: THREE.Object3D): void {
 
 function applyToggles(): void {
   if (!current) return
-  for (const helper of current.helpers) helper.visible = showBones.checked
-  current.model.traverse((node) => {
+  current.helper.visible = showBones.checked
+  current.rig.object.traverse((node) => {
     if (!(node instanceof THREE.Mesh)) return
     for (const material of [node.material].flat()) {
       let original = materials.get(material)
@@ -175,7 +167,7 @@ function applyToggles(): void {
 function applyWeights(): void {
   if (!current) return
   current.restoreWeights?.()
-  current.restoreWeights = paint.value === 'original' ? undefined : rig.weights(current.model, paint.value === 'ownership' ? undefined : paint.value.slice(5))
+  current.restoreWeights = paint.value === 'original' ? undefined : weights(current.rig.object, paint.value === 'ownership' ? undefined : paint.value.slice(5))
   applyToggles()
 }
 paint.addEventListener('change', applyWeights)
@@ -194,7 +186,6 @@ let time = 0
 renderer.setAnimationLoop(() => {
   const dt = clock.getDelta()
   if (play.checked) time += dt
-  current?.model.update(dt)
   current?.motion(frozen ?? time)
   renderer.render(scene, camera)
 })

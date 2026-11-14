@@ -1,9 +1,10 @@
-import * as THREE from 'three'
 import { CachedRigLoader } from '@drawcall/rig'
-import { isPreview, loadingManager, onDispose, scene } from '@drawcall/glts'
 
-const rig = await new CachedRigLoader(loadingManager).loadAsync({
-  url: '/model.glb',
+export const fox = () => new CachedRigLoader().loadAsync({
+  object: async () => {
+    const { ModelLoader } = await import('@drawcall/rig')
+    return (await new ModelLoader().loadAsync('model.glb')).scene
+  },
   skeleton: [
     {"name": "Hips", "position": [0.2, -0.21, 0]},
     {"name": "Spine", "parent": "Hips", "position": [0.2, -0.14, 0]},
@@ -48,12 +49,3 @@ const rig = await new CachedRigLoader(loadingManager).loadAsync({
   ],
   resolution: 128,
 })
-scene.add(rig.scene)
-for (const warning of rig.report.warnings) console.warn(warning)
-
-if (isPreview) {
-  scene.background = new THREE.Color(0x2a2d31)
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2.5), new THREE.DirectionalLight(0xffffff, 1))
-}
-
-onDispose(() => rig.dispose())

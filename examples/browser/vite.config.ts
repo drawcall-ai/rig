@@ -1,4 +1,3 @@
-import { glts } from '@drawcall/glts/vite'
 import { defineConfig } from 'vite'
 import { vitecache } from 'vitecache/vite'
 
@@ -8,7 +7,7 @@ const headers = {
 }
 
 export default defineConfig({
-  plugins: [glts(), vitecache()],
+  plugins: [vitecache()],
   server: { headers },
   preview: { headers },
   build: { assetsInlineLimit: 0 },

@@ -27,7 +27,7 @@ export async function skin<Name extends string>(
   resolution = 128,
 ): Promise<SkinReport> {
   const root = skeleton instanceof THREE.Bone ? skeleton : boneTree(skeleton)
-  return bind(object, root, resolution)
+  return (await bind(object, root, resolution)).report
 }
 
 /** Shares scene preparation and binding between direct skinning and the loader's cached solve. */
@@ -36,7 +36,7 @@ export async function bind(
   root: THREE.Bone,
   resolution: number,
   solve = computeWeights,
-): Promise<SkinReport> {
+): Promise<{ report: SkinReport; skeleton: THREE.Skeleton }> {
   if (object instanceof THREE.Mesh) throw new Error('skin() needs a container: add the mesh to a Group or Scene first')
   if (object === root) throw new Error('skin() needs a model container separate from the root bone; use a Group or Scene')
   checkResolution(resolution, 'skin(scene, root, 256)')
@@ -108,7 +108,7 @@ export async function bind(
       if (!newBones.has(node) && names.has(node.name)) node.name = `${node.name}_source`
     })
     bones.forEach((bone, index) => { bone.userData.rigBindMatrix = rest[index] })
-    return report
+    return { report, skeleton: three }
   } finally {
     for (const geometry of pending) geometry.dispose()
   }

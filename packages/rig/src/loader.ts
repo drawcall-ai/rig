@@ -1,18 +1,19 @@
-import { FileLoader, Loader, LoaderUtils, SkinnedMesh, type Skeleton, type AnimationClip, type Group, type LoadingManager } from 'three'
-import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js'
-import { MeshoptDecoder } from 'meshoptimizer'
+import type { Object3D, Skeleton } from 'three'
 import { boneTree } from './bone.js'
 import { bind } from './skin/bind.js'
 import { cachedWeights } from './skin/cache.js'
 import type { SkeletonBone } from './skin/skeleton.js'
 import type { SkinReport } from './skin/weights.js'
 import { Resources } from './resources.js'
-import { requireTextures } from './gltf/textures.js'
 import { checkResolution } from './measure/voxelize.js'
 
 export interface RigRequest {
-  /** Resolves against the loader's path and manager; in Node, a root path such as `/model.glb` reads from the vitecache plugin's publicDir, or else `public/` in the working directory. */
-  url: string | URL
+  /**
+   * Creates the model to rig, a container such as a glTF scene, unscaled at the origin. Write it inline in the load:
+   * vitecache warms it from its source in Node, so it may use only globals, its own declarations and what it imports
+   * dynamically.
+   */
+  object: () => Object3D | Promise<Object3D>
   /** Serialized bones in model space. List children in segment order: the first child ends its parent's segment. */
   skeleton: readonly SkeletonBone[]
   /** Voxels along the longest model axis. */
@@ -20,12 +21,11 @@ export interface RigRequest {
 }
 
 export interface RigResult {
-  scene: Group
+  /** The created object, its meshes replaced by skinned meshes bound to the new skeleton. */
+  object: Object3D
   skeleton: Skeleton
   report: SkinReport
-  /** Source animation tracks target the replaced armature and are discarded. */
-  animations: AnimationClip[]
-  /** Releases source and generated GPU resources. Safe to call more than once. */
+  /** Releases the created object's GPU resources and the rig's. Safe to call more than once. */
   dispose(): void
 }
 
@@ -34,76 +34,29 @@ export interface CacheOptions {
   cachePath?: string
 }
 
-export interface LoadedGLTF extends GLTF {
-  data: ArrayBuffer
-}
-
-/** Loads a glTF and rigs a fresh scene, reusing cached weights for unchanged input. */
-export class CachedRigLoader extends Loader<RigResult, RigRequest> {
+/**
+ * Creates a model and rigs it, reusing cached weights for unchanged geometry, skeleton and resolution. The vitecache
+ * plugin warms each literal `new CachedRigLoader().loadAsync({ ... })` in Node, so browsers read the weights.
+ */
+export class CachedRigLoader {
   private readonly cachePath: string | undefined
 
-  constructor(manager?: LoadingManager, { cachePath }: CacheOptions = {}) {
-    super(manager)
+  constructor({ cachePath }: CacheOptions = {}) {
     this.cachePath = cachePath
   }
 
-  override load(request: RigRequest, onLoad: (result: RigResult) => void, onProgress?: (event: ProgressEvent) => void, onError?: (error: unknown) => void): void {
-    const url = String(request.url)
-    this.manager.itemStart(url)
-    void this.rig(request, url, onProgress).then(onLoad).catch((error: unknown) => {
-      this.manager.itemError(url)
-      if (onError) onError(error)
-      else console.error(error)
-    }).finally(() => this.manager.itemEnd(url))
-  }
-
-  protected createLoader(): GLTFLoader {
-    return new GLTFLoader(this.manager)
-      .setMeshoptDecoder(MeshoptDecoder)
-      .register(requireTextures)
-      .setPath(this.path)
-      .setResourcePath(this.resourcePath)
-      .setCrossOrigin(this.crossOrigin)
-      .setWithCredentials(this.withCredentials)
-      .setRequestHeader(this.requestHeader)
-  }
-
-  protected async read(url: string | URL, onProgress?: (event: ProgressEvent) => void): Promise<LoadedGLTF> {
-    const loader = this.createLoader()
-    const input = String(url)
-    if (/^[a-z][a-z\d+.-]*:/i.test(input) || input.startsWith('/')) loader.setPath('')
-    const base = LoaderUtils.extractUrlBase(input)
-    const resourcePath = loader.resourcePath || (loader.path ? LoaderUtils.resolveURL(base, loader.path) : base)
-    const data = await new FileLoader(loader.manager)
-      .setPath(loader.path)
-      .setResponseType('arraybuffer')
-      .setRequestHeader(loader.requestHeader)
-      .setWithCredentials(loader.withCredentials)
-      .loadAsync(input, onProgress)
-    if (!(data instanceof ArrayBuffer)) throw new Error('CachedRigLoader expected binary model data')
-    return { ...await loader.parseAsync(data, resourcePath), data }
-  }
-
-  private async rig(request: RigRequest, url: string, onProgress?: (event: ProgressEvent) => void): Promise<RigResult> {
-    const resolution = request.resolution ?? 128
+  async loadAsync({ object: create, skeleton, resolution = 128 }: RigRequest): Promise<RigResult> {
     checkResolution(resolution, 'CachedRigLoader resolution')
-    const root = boneTree(request.skeleton)
-    const source = await this.read(url, onProgress)
-    const { scene } = source
+    const root = boneTree(skeleton)
+    const object = await create()
     const resources = new Resources()
-    source.scenes.forEach((entry) => resources.collect(entry))
+    resources.collect(object)
     try {
-      const report = await bind(scene, root, resolution, cachedWeights(source.data, this.cachePath))
-      resources.collect(scene)
-      let skeleton: Skeleton | undefined
-      scene.traverse((entry) => {
-        entry.animations = []
-        if (entry instanceof SkinnedMesh) skeleton = entry.skeleton
-      })
-      if (!skeleton) throw new Error('CachedRigLoader source contains no meshes to rig')
-      return { scene, skeleton, report, animations: [], dispose: () => resources.dispose() }
+      const { report, skeleton: bound } = await bind(object, root, resolution, cachedWeights(this.cachePath))
+      resources.collect(object)
+      return { object, skeleton: bound, report, dispose: () => resources.dispose() }
     } catch (error) {
-      resources.collect(scene)
+      resources.collect(object)
       return resources.fail(error)
     }
   }

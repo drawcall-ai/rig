@@ -4,7 +4,7 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js'
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { bone, pose, skin } from '../dist/index.js'
-import { readGLTF } from '../dist/gltf/load.js'
+import { ModelLoader } from '../dist/node.js'
 
 function update(object: THREE.Object3D): void {
   object.updateWorldMatrix(true, false)
@@ -117,7 +117,7 @@ pose(roundtrip, {})
 same(vertices(roundtrip), roundtripLocal.map((point) => roundtrip.localToWorld(point.clone())), 'GLB roundtrip retains local rest matrices')
 
 // Native glTF has no rig metadata; inverse binds are interpreted beneath the loader's identity scene root.
-const native = (await readGLTF(new GLTFLoader(), new URL('./fixtures/fox.glb', import.meta.url))).scene
+const native = (await new ModelLoader().loadAsync(new URL('./fixtures/fox.glb', import.meta.url).href)).scene
 const nativeRest = vertices(native)
 native.position.set(3, 4, -2)
 native.rotation.set(0.1, 0.5, 0.2)

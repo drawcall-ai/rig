@@ -21,7 +21,7 @@ export class Resources {
   }
 
   fail(error: unknown): never {
-    try { this.dispose() } catch (cleanup) { throw new AggregateError([error, cleanup], 'CachedRigLoader failed and resource disposal failed') }
+    try { this.dispose() } catch (cleanup) { throw new AggregateError([error, cleanup], 'Resource disposal failed after an error') }
     throw error
   }
 
@@ -32,6 +32,6 @@ export class Resources {
     for (const resource of [...this.geometries, ...this.materials, ...this.textures, ...this.skeletons]) {
       try { resource.dispose() } catch (error) { errors.push(error) }
     }
-    if (errors.length) throw new AggregateError(errors, 'CachedRigLoader resource disposal failed')
+    if (errors.length) throw new AggregateError(errors, 'Resource disposal failed')
   }
 }

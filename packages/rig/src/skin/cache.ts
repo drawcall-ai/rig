@@ -2,14 +2,14 @@ import { CacheEntry } from 'vitecache'
 import { computeWeights } from './worker.js'
 import { decode, encode } from './codec.js'
 
-export function cachedWeights(data: ArrayBuffer, cachePath: string | undefined): typeof computeWeights {
+/** Keyed by the solver's inputs, the geometry a load creates rather than how it creates it. */
+export function cachedWeights(cachePath: string | undefined): typeof computeWeights {
   return async (positions, indices, skeleton, resolution) => {
     const entry = new CacheEntry({
       // Bump when solver behavior or the encoded result format changes.
       version: 'rig-weights@1',
       basePath: cachePath,
       dependencies: {
-        model: { value: await digest(data) },
         positions: { value: await digest(positions) },
         indices: { value: await digest(indices) },
         resolution: { value: resolution },

@@ -5,6 +5,7 @@ export { section, type Axis, type Plane, type Region, type Section } from './mea
 export { skin } from './skin/bind.js'
 export type { BoneReport, SkinReport } from './skin/weights.js'
 export { CachedRigLoader, type CacheOptions, type RigRequest, type RigResult } from './loader.js'
+export { ModelLoader } from './gltf/loader.js'
 export type { SkeletonBone } from './skin/skeleton.js'
 export { pick, type Point, type Span, type AxisCamera } from './measure/pick.js'
 export { pose, type Pose } from './pose.js'
