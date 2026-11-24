@@ -64,11 +64,11 @@
     "three": "^0.186.1",
     "tsx": "^4.19.2",
     "typescript": "^5.9.3",
-    "vitecache": "^0.7.0"
+    "@drawcall/cache": "^0.8.2"
   },
   "peerDependencies": {
     "three": ">=0.170.0",
-    "vitecache": "^0.7.0"
+    "@drawcall/cache": "^0.8.2"
   },
   "types": "./dist/node.d.ts"
 }

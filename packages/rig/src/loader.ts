@@ -10,7 +10,7 @@ import { checkResolution } from './measure/voxelize.js'
 export interface RigRequest {
   /**
    * Creates the model to rig, a container such as a glTF scene, unscaled at the origin. Write it inline in the load:
-   * vitecache warms it from its source in Node, so it may use only globals, its own declarations and what it imports
+   * the cache plugin warms it from its source in Node, so it may use only globals, its own declarations and what it imports
    * dynamically.
    */
   object: () => Object3D | Promise<Object3D>
@@ -30,12 +30,12 @@ export interface RigResult {
 }
 
 export interface CacheOptions {
-  /** The URL browsers read cached weights from, including any Vite base, such as `/app/_vitecache/`. Defaults to `/_vitecache/`. */
+  /** The URL browsers read cached weights from, including any Vite base, such as `/app/_cache/`. Defaults to `/_cache/`. */
   cachePath?: string
 }
 
 /**
- * Creates a model and rigs it, reusing cached weights for unchanged geometry, skeleton and resolution. The vitecache
+ * Creates a model and rigs it, reusing cached weights for unchanged geometry, skeleton and resolution. The cache
  * plugin warms each literal `new CachedRigLoader().loadAsync({ ... })` in Node, so browsers read the weights.
  */
 export class CachedRigLoader {

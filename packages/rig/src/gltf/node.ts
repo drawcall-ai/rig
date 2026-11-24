@@ -3,7 +3,7 @@ import { isAbsolute } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createCanvas, loadImage } from '@napi-rs/canvas'
 import { DataTexture, LoaderUtils, type LoadingManager } from 'three'
-import { publicURL } from 'vitecache'
+import { publicURL } from '@drawcall/cache'
 import type { GLTF, GLTFParser } from 'three/addons/loaders/GLTFLoader.js'
 import { ModelLoader as BaseLoader } from './loader.js'
 

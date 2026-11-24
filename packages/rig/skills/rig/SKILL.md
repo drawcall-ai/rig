@@ -5,10 +5,10 @@ description: Rig glTF/GLB models and procedural three.js objects for animation w
 
 # Rigging a model
 
-Deliver a literal `new CachedRigLoader().loadAsync({ ... })` in the app's source, holding the serialized skeleton and an inline function that creates the model, together with the model files it loads. Rig computes the weights; the vitecache plugin computes them during development and builds so browsers only read them.
+Deliver a literal `new CachedRigLoader().loadAsync({ ... })` in the app's source, holding the serialized skeleton and an inline function that creates the model, together with the model files it loads. Rig computes the weights; the cache plugin computes them during development and builds so browsers only read them.
 
 ```sh
-npm install @drawcall/rig three vitecache
+npm install @drawcall/rig three @drawcall/cache
 ```
 
 ## Inspect before defining joints
@@ -43,7 +43,7 @@ export const character = () => new CachedRigLoader().loadAsync({
 
 `rig.object` is the created model, its meshes bound to the new skeleton; add it to the scene and call `rig.dispose()` when removing it. Each load creates and rigs a fresh object, so iterating on the skeleton always starts from the original model rather than compounding the previous result's deformation. For an object that exists only at runtime, use `skin()` directly, which computes on every call: pass a skeleton list when joints are data, or build bones with `bone()` when joints are built in code.
 
-Add the `vitecache()` plugin from `vitecache/vite`, which computes the weights of each load in the app's source in Node during development and builds; a load it cannot see recomputes in every browser session. So write one literal load per model, as above: the skeleton and resolution as JSON, and the `object` function inline, importing what it uses dynamically. Weights are keyed by the geometry the function creates, the skeleton and the resolution, so changing the function without changing that geometry keeps them. Give `ModelLoader` the model's path below `public/` without a leading slash, which also resolves under a Vite `base` for pages at the app's root; under a base, browsers also need the cache's URL: `` new CachedRigLoader({ cachePath: `${import.meta.env.BASE_URL}_vitecache/` }) ``. Follow the installed vitecache skill at `node_modules/vitecache/skills/vitecache/SKILL.md` for the plugin and deployment. Outside Vite, a Node script computes and saves weights directly.
+Add the `cache()` plugin from `@drawcall/cache/vite`, which computes the weights of each load in the app's source in Node during development and builds; a load it cannot see recomputes in every browser session. So write one literal load per model, as above: the skeleton and resolution as JSON, and the `object` function inline, importing what it uses dynamically. Weights are keyed by the geometry the function creates, the skeleton and the resolution, so changing the function without changing that geometry keeps them. Give `ModelLoader` the model's path below `public/` without a leading slash, which also resolves under a Vite `base` for pages at the app's root; under a base, browsers also need the cache's URL: `` new CachedRigLoader({ cachePath: `${import.meta.env.BASE_URL}_cache/` }) ``. Follow the installed cache skill at `node_modules/@drawcall/cache/skills/cache/SKILL.md` for the plugin and deployment. Outside Vite, a Node script computes and saves weights directly.
 
 Skinning reads joints and mesh in world space. Return the model untransformed at the origin and place `rig.object` after loading: a model moved first no longer matches a skeleton measured in model coordinates.
 

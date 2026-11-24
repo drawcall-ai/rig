@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite'
-import { vitecache } from 'vitecache/vite'
+import { cache } from '@drawcall/cache/vite'
 
 const headers = {
   'Cross-Origin-Opener-Policy': 'same-origin',
@@ -7,7 +7,7 @@ const headers = {
 }
 
 export default defineConfig({
-  plugins: [vitecache()],
+  plugins: [cache()],
   server: { headers },
   preview: { headers },
   build: { assetsInlineLimit: 0 },

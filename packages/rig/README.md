@@ -20,7 +20,7 @@ scene.add(rig.object)
 console.log(rig.report)
 ```
 
-Install `@drawcall/rig three vitecache`. Add the `vitecache()` Vite plugin from `vitecache/vite` so apps compute weights for the loads in their source during development and builds, instead of in the browser. Use the packaged [rig skill](skills/rig/SKILL.md) for the measurement, skeleton, and deformation workflow. Skills ship with their packages under `skills/`.
+Install `@drawcall/rig three @drawcall/cache`. Add the `cache()` Vite plugin from `@drawcall/cache/vite` so apps compute weights for the loads in their source during development and builds, instead of in the browser. Use the packaged [rig skill](skills/rig/SKILL.md) for the measurement, skeleton, and deformation workflow. Skills ship with their packages under `skills/`.
 
 Skinning uses WebAssembly in workers. To enable parallel computation in browsers, serve over HTTPS (or localhost) with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. Pages without shared-memory support use the same solver in one worker. Node.js enables parallel computation automatically.
 

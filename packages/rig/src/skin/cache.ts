@@ -1,4 +1,4 @@
-import { CacheEntry } from 'vitecache'
+import { CacheEntry } from '@drawcall/cache'
 import { computeWeights } from './worker.js'
 import { decode, encode } from './codec.js'
 
