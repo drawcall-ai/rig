@@ -27,9 +27,15 @@ export interface Piece {
  * alone does not imply rigidity.
  */
 export function pieces(object: THREE.Object3D): Piece[] {
+  return components(object).map(({ mesh, vertices, min, max, center }, index) => ({ index, mesh: mesh.name, vertices: vertices.length, min, max, center }))
+}
+
+/** One mesh contributing to each piece, at the piece's index: identifies pieces where names may repeat. */
+export function pieceMeshes(object: THREE.Object3D): THREE.Mesh[] {
+  return components(object).map((c) => c.mesh)
+}
+
+function components(object: THREE.Object3D) {
   const soup = gather(object)
-  return meshPieces(soup.positions, soup.indices).map(({ vertices, min, max, center }, index) => {
-    const mesh = soup.meshes[soup.offsets.findLastIndex((offset) => offset <= vertices[0])]
-    return { index, mesh: mesh.name, vertices: vertices.length, min, max, center }
-  })
+  return meshPieces(soup.positions, soup.indices).map((piece) => ({ ...piece, mesh: soup.meshes[soup.offsets.findLastIndex((offset) => offset <= piece.vertices[0])] }))
 }

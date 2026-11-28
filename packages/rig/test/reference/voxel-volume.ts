@@ -1,12 +1,6 @@
 /**
- * Vendored CPU reference — voxelization.
- *
- * Source: /Users/bela/Documents/drawcall.ai/character/packages/rigged/src/voxel-volume.ts
- * Adaptations (behavior-preserving):
- * - Takes raw positions/indices instead of a THREE.Mesh (caller pre-applies matrixWorld).
- * - THREE.Triangle.intersectsBox replaced by a faithful port of three r170
- *   Box3.intersectsTriangle (identical SAT axis order and comparisons).
- * - Nested boolean[][][] proxies dropped; only the flat arrays are exposed.
+ * CPU reference for the voxelizer's parity tests: voxelization of world-space positions and indices, testing triangles
+ * against cells with a port of three r170 Box3.intersectsTriangle (identical SAT axis order and comparisons).
  */
 
 export interface VoxelVolume {
@@ -181,7 +175,7 @@ function computeSurfaceVoxelsFast(
 
 /**
  * Port of three r170 Box3.intersectsTriangle (SAT). Axis order and the strict `> r`
- * separating test match three exactly so results are bit-identical to the original.
+ * separating test match three exactly, as the voxelizer must to match it bit for bit.
  */
 function triangleIntersectsBox(
   ax: number, ay: number, az: number,

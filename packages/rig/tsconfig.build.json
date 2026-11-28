@@ -1,13 +1,7 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "verbatimModuleSyntax": true,
-    "types": ["node"],
     "noEmit": false,
-    "declaration": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "rewriteRelativeImportExtensions": false
-  },
-  "include": ["src"]
+    "declaration": true
+  }
 }

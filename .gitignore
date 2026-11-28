@@ -1,8 +1,8 @@
 node_modules
 dist
 .DS_Store
-examples/browser/public/*
-!examples/browser/public/rigs/
-examples/browser/public/rigs/*
-!examples/browser/public/rigs/horse.glb
+examples/*/public/*
+!examples/rig/public/rigs/
+examples/rig/public/rigs/*
+!examples/rig/public/rigs/horse.glb
 .env

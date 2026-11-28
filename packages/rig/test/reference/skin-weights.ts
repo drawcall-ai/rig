@@ -1,10 +1,4 @@
-/**
- * Vendored CPU reference — per-vertex skin weights from voxel bone weights.
- *
- * Source: /Users/bela/Documents/drawcall.ai/character/packages/rigged/src/skin-weights.ts
- * Adaptations (behavior-preserving): takes a raw positions array instead of a
- * THREE.BufferGeometry.
- */
+/** CPU reference for the solver's parity tests: per-vertex skin weights, from a positions array, from voxel bone weights. */
 
 import type { VoxelVolume } from './voxel-volume.js'
 import type { BoneAssignment } from './bone-assignment.js'

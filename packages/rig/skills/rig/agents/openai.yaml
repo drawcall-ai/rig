@@ -1,4 +1,4 @@
 interface:
   display_name: "rig"
-  short_description: "Rig 3D models with cached skin weights"
+  short_description: "Rig 3D models and faces with cached skin weights"
   default_prompt: "Use $rig to measure this model, define its skeleton, compute skin weights, and verify deformation. Deliver the rig load in the app's source and the model files it loads."

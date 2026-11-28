@@ -1,15 +1,9 @@
 /**
- * Vendored CPU reference — geodesic distance fields, closest-bone assignment, weight blur.
- *
- * Source: /Users/bela/Documents/drawcall.ai/character/packages/rigged/src/bone-assignment.ts
- * Adaptations (behavior-preserving):
- * - THREE.Vector3 replaced by [x, y, z] tuples; bone lines carry precomputed
- *   `boneIndex`/`isTerminal` instead of names (see bones.ts for the name logic).
- * - Takes already-active bones plus an explicit `boneCount` (the original derived
- *   both from the skeleton via getActiveBones).
- * - The nested weights proxy and console logging are dropped.
- * Quirks of the original are kept verbatim (Uint8Array seenList of size 32, the
- * 0.001 keep-threshold, the `maxChange < 0.001 && iter > 10` early exit).
+ * CPU reference for the solver's parity tests: geodesic distance fields, closest-bone assignment, weight blur, written
+ * plainly with dense per-cell state. Points are [x, y, z] tuples; bone lines carry a precomputed `boneIndex` and
+ * an `isTerminal` flag, and the caller passes the active bones and the total `boneCount`. The solver
+ * reproduces its exact behavior, including a Uint8Array seenList of size 32, the 0.001 keep-threshold and the
+ * `maxChange < 0.001 && iter > 10` early exit.
  */
 
 import type { VoxelVolume } from './voxel-volume.js'

@@ -13,7 +13,10 @@ export class Resources {
       if (object instanceof SkinnedMesh) this.skeletons.add(object.skeleton)
       if (!(object instanceof Mesh || object instanceof Line || object instanceof Points)) return
       this.geometries.add(object.geometry)
-      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+      // the shadow pass's depth materials, which copyRenderState() carries over, are the object's too
+      const materials = [object.material, object.customDepthMaterial, object.customDistanceMaterial].flat()
+      for (const material of materials) {
+        if (!material) continue
         this.materials.add(material)
         for (const value of Object.values(material)) if (value instanceof Texture) this.textures.add(value)
       }

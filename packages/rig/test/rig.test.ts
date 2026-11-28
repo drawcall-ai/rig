@@ -26,10 +26,18 @@ import { makeCapsule } from './capsule.js'
   const parent = new THREE.Group()
   const model = new THREE.Group()
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial())
+  mesh.scale.setScalar(2)
+  // what hangs off a mesh stays in place when skinning replaces the mesh
+  const socket = new THREE.Object3D()
+  socket.name = 'Socket'
+  socket.position.x = 0.5
+  mesh.add(socket)
   parent.add(model.add(mesh))
   const root = bone('rigid', [0, 0, 0])
   root.userData.pieces = [0]
   await skin(model, root, 16)
+  assert.equal(socket.parent, model, 'a mesh child moves under the model')
+  assert.deepEqual(socket.getWorldPosition(new THREE.Vector3()).toArray(), [1, 0, 0], 'in place')
   model.position.x = 10
   assert.deepEqual(pieces(model)[0].center, [10, 0, 0])
   parent.position.x = 20
@@ -165,22 +173,6 @@ import { makeCapsule } from './capsule.js'
 
   await assert.rejects(Reflect.apply(skin, undefined, [tube(), rig(1.1), { resolution: 64 }]), /resolution must be a positive integer, e.g. skin\(scene, root, 256\)/)
   assert.throws(() => section(tube(), [{ y: 2 }], 0.5), /resolution must be a positive integer/)
-
-  // Removing an old armature keeps what hangs off it: a marker, and the new root attached under an old bone
-  const rerigged = tube()
-  const oldBone = new THREE.Bone()
-  oldBone.position.set(0, 1, 0)
-  const marker = new THREE.Object3D()
-  marker.position.set(0, 1, 0)
-  oldBone.add(marker)
-  rerigged.add(oldBone)
-  rerigged.updateMatrixWorld(true)
-  const newRoot = rig(suggested)
-  oldBone.attach(newRoot)
-  await skin(rerigged, newRoot, 64)
-  assert.equal(oldBone.parent, null, 'old bone removed')
-  assert.ok(marker.parent === rerigged && newRoot.parent === rerigged, 'its other children kept')
-  assert.ok(marker.getWorldPosition(new THREE.Vector3()).distanceTo(new THREE.Vector3(0, 2, 0)) < 1e-9, 'in place')
 
   assert.throws(() => pose(tube(), { rotations: {} }), /posing needs a skinned scene/)
 

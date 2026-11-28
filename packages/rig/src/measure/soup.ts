@@ -29,9 +29,7 @@ export function gather(object: THREE.Object3D): Soup {
   meshes.forEach((mesh, m) => {
     const position = mesh.geometry.getAttribute('position')
     for (let i = 0; i < position.count; i++) {
-      v.fromBufferAttribute(position, i)
-      if (mesh instanceof THREE.SkinnedMesh) mesh.applyBoneTransform(i, v)
-      v.applyMatrix4(mesh.matrixWorld).toArray(positions, (offsets[m] + i) * 3)
+      posed(mesh, i, v).applyMatrix4(mesh.matrixWorld).toArray(positions, (offsets[m] + i) * 3)
     }
     const index = mesh.geometry.getIndex()
     const count = index ? index.count : position.count
@@ -42,6 +40,12 @@ export function gather(object: THREE.Object3D): Soup {
     }
   })
   return { meshes, offsets, positions, indices: new Uint32Array(indices) }
+}
+
+/** Vertex `i` of `mesh` in its local coordinates, skinned meshes in their current pose (bones' world matrices updated). */
+export function posed(mesh: THREE.Mesh, i: number, target: THREE.Vector3): THREE.Vector3 {
+  target.fromBufferAttribute(mesh.geometry.getAttribute('position'), i)
+  return mesh instanceof THREE.SkinnedMesh ? mesh.applyBoneTransform(i, target) : target
 }
 
 /**

@@ -16,7 +16,7 @@ export function bone(name: string, world: Vec3, parent?: THREE.Bone): THREE.Bone
 
 /**
  * The root of the bone tree a serialized skeleton describes, ready for skin(): one bone() per entry at its
- * absolute position, linked by parent name, with a copy of its `pieces` in `userData.pieces`. Validates the
+ * absolute position and rest rotation, linked by parent name, with a copy of its `pieces` in `userData.pieces`. Validates the
  * skeleton as skin() does and requires exactly one root. skin() and CachedRigLoader build bones from data with it.
  */
 export function boneTree<Name extends string>(skeleton: readonly SkeletonBone<Name>[]): THREE.Bone {
@@ -25,6 +25,7 @@ export function boneTree<Name extends string>(skeleton: readonly SkeletonBone<Na
   if (roots.length !== 1) throw new Error(`skeleton must have exactly one root, got ${roots.length}`)
   const built = skeleton.map((entry) => {
     const result = bone(entry.name, entry.position)
+    if (entry.rotation) result.quaternion.fromArray(entry.rotation)
     if (entry.pieces) result.userData.pieces = entry.pieces.slice()
     return result
   })
