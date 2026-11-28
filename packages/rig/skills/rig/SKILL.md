@@ -1,6 +1,6 @@
 ---
 name: rig
-description: Rig glTF/GLB models and procedural three.js objects for animation with @drawcall/rig, as a cached rig load in a Vite app's source, including faces for speech and expression (ARKit blendshapes, eyes, teeth, tongue). Use when asked to rig, skin, add a skeleton or armature, make a mesh animatable, add facial rigging or blendshapes, or skin a model at runtime in a three.js app from a serialized skeleton. Not for modeling or animating an already suitable rig.
+description: Rig glTF/GLB models and procedural three.js objects for animation with @drawcall/rig, as a cached rig load in a Vite app's source, including faces driven by ARKit blendshapes (eyes, teeth, tongue). Use when asked to rig, skin, add a skeleton or armature, make a mesh animatable, add facial rigging or blendshapes, or skin a model at runtime in a three.js app from a serialized skeleton. Not for modeling or animating an already suitable rig.
 ---
 
 # Rigging a model
@@ -80,7 +80,7 @@ At rest the lips should meet with no gap or seam, and the eyes should look forwa
 
 Expression wrinkles are an optional shading layer: `await wrinkles(rig.object)`, imported from `@drawcall/rig`, replaces the face's material with a node material whose creases follow the morph weights. It needs three's `WebGPURenderer` from `three/webgpu`, which it loads only when called; apps on `WebGLRenderer` leave it out and keep everything else.
 
-To animate the face, use any ARKit-compatible driver (Live Link Face, MediaPipe, Audio2Face, a TTS viseme stream, or hand-set values): the face's morph targets carry the ARKit blendshape names and sit on every mesh they move, and eye look directions are rotations of the eye bones rather than shapes. `FACE_BONES` documents the eye bones' axes, and `FaceData.shapes` (`userData.face` on the face geometry, checked by `isFaceData`) every baked shape, including the extras beyond ARKit, which standard ARKit sources leave at 0.
+To animate the face, use any ARKit-compatible driver (Live Link Face, MediaPipe, Audio2Face or hand-set values): the face's morph targets carry the ARKit blendshape names and sit on every mesh they move, and eye look directions are rotations of the eye bones rather than shapes. `FACE_BONES` documents the eye bones' axes, and `FaceData.shapes` (`userData.face` on the face geometry, checked by `isFaceData`) every baked shape.
 
 ## Iterate from evidence
 

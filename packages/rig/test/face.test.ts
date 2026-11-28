@@ -49,7 +49,9 @@ const result = await rig(landmarks, object)
 assert.deepEqual(result.bones.map((b) => [b.name, b.parent]), [['LeftEye', 'Head'], ['RightEye', 'Head'], ['Teeth', 'Head']])
 assert.ok(result.bones[0].position[0] > 0, 'the character\'s left eye sits on its left (+x)')
 assert.ok(result.bones.every((b) => b.pieces?.length), 'every added bone owns pieces')
-for (const name of ['jawOpen', 'eyeBlinkLeft', 'mouthSmileLeft_soft', 'cheekBulgeRight']) assert.ok(result.shapes.includes(name), name)
+// the ARKit blendshapes and only those, but the eyeLook ones, which are eye bone rotations
+const ARKIT = ['browDownLeft', 'browDownRight', 'browInnerUp', 'browOuterUpLeft', 'browOuterUpRight', 'cheekPuff', 'cheekSquintLeft', 'cheekSquintRight', 'eyeBlinkLeft', 'eyeBlinkRight', 'eyeSquintLeft', 'eyeSquintRight', 'eyeWideLeft', 'eyeWideRight', 'jawForward', 'jawLeft', 'jawOpen', 'jawRight', 'mouthClose', 'mouthDimpleLeft', 'mouthDimpleRight', 'mouthFrownLeft', 'mouthFrownRight', 'mouthFunnel', 'mouthLeft', 'mouthLowerDownLeft', 'mouthLowerDownRight', 'mouthPressLeft', 'mouthPressRight', 'mouthPucker', 'mouthRight', 'mouthRollLower', 'mouthRollUpper', 'mouthShrugLower', 'mouthShrugUpper', 'mouthSmileLeft', 'mouthSmileRight', 'mouthStretchLeft', 'mouthStretchRight', 'mouthUpperUpLeft', 'mouthUpperUpRight', 'noseSneerLeft', 'noseSneerRight', 'tongueOut']
+assert.deepEqual([...result.shapes].sort(), ARKIT)
 assert.deepEqual(object.children.map((c) => c.name), ['', 'EyeLeft', 'EyeRight', 'TeethUpper', 'TeethLower', 'Tongue'])
 const [faceMesh, , , , lowerTeeth, tongue] = object.children
 assert.ok(faceMesh instanceof THREE.Mesh && lowerTeeth instanceof THREE.Mesh && tongue instanceof THREE.Mesh)

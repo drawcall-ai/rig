@@ -1,11 +1,12 @@
 /**
  * The face's final shape set: the transferred ARKit shapes, corrected where a template transfer misreads a face, plus
- * the face's own lids, the cheek mass and the soft-tissue lag corrections of the mouth shapes.
+ * the face's own lids.
  */
 
 import * as THREE from 'three'
 import { browShapes } from './brows.js'
-import { cheekBulge, cheekMass, cheekZone } from './cheek.js'
+import { CHEEK_MASS } from '../mass.js'
+import { cheekMass, cheekSwell } from './cheek.js'
 import { smoothstep } from './math.js'
 import { lidShapes } from './lids.js'
 import type { Tissue } from './tissue.js'
@@ -14,11 +15,6 @@ import { jawMotion } from './transfer.js'
 /** The template's upper face moves far less than a real one (brows ~1 mm): gains toward an anatomical range. */
 const GAIN: [RegExp, number][] = [[/^brow/, 1.5], [/^noseSneer/, 1.2], [/^mouthFrown/, 1.4]]
 const BROW_CONTROL = 1.1
-/**
- * Shapes whose cheek part is also its own `<name>_soft` shape: a lag correction, weighted by how far a soft-tissue spring
- * trails the shape's weight (negative while it rises), so the cheek follows with inertia while the lips stay fast.
- */
-const SOFT = /^(mouthSmile|mouthStretch|mouthUpperUp|noseSneer|mouthDimple)/
 
 export interface Shape {
   /** Template-space deltas of the face skin. */
@@ -36,6 +32,12 @@ export function faceShapes(tissue: Tissue, transferred: Record<string, Float32Ar
   const { eyeY } = anatomy
   const shapes: Record<string, Shape> = {}
   const moving = (delta: Float32Array): Shape => ({ delta, jaw: jawMotion(delta, tissue) })
+  // each side's cheek swelling, shared between the shapes that carry it
+  const swelling: Record<string, Float32Array> = {}
+  for (const [side, sign] of [['Left', -1], ['Right', 1]] as const) {
+    const swell = cheekSwell(tissue, restNormals, rimFade, sign)
+    for (const [base, share] of Object.entries(CHEEK_MASS.swell)) swelling[`${base}${side}`] = swell.map((x) => x * share)
+  }
   for (const [name, source] of Object.entries(transferred)) {
     const gain = GAIN.find(([pattern]) => pattern.test(name))?.[1] ?? 1
     const brow = name.startsWith('brow')
@@ -49,7 +51,7 @@ export function faceShapes(tissue: Tissue, transferred: Record<string, Float32Ar
       let k = 1, ky = 1
       // the template's upper-lip raise drags the nostril base along: keep the nose mostly still
       if (name.startsWith('mouthUpperUp')) k = 1 - 0.75 * smoothstep(0, 1, (y - (wing.y - 0.0097)) / 0.0109) * (1 - Math.min(1, Math.max(0, (Math.abs(z - anatomy.mouth.center.z) - (wing.z + 0.0032)) / 0.00727)))
-      // a real cheek mostly swells rather than rises; the swelling itself is cheekBulge, so the cheek raise counts once
+      // a real cheek mostly swells rather than rises: the transferred raise gives way to the swelling added below
       if (/^(mouthSmile|cheekSquint)/.test(name)) {
         const m = cheekMass(anatomy.cheek, y, z, side)
         k = 1 - (name.startsWith('cheekSquint') ? 0.5 : 0) * m
@@ -59,17 +61,10 @@ export function faceShapes(tissue: Tissue, transferred: Record<string, Float32Ar
       if (name.startsWith('eyeSquint')) k = smoothstep(0, 1, (y - (eyeY - 0.01998)) / 0.0109)
       d[v * 3] *= k; d[v * 3 + 1] *= k * ky; d[v * 3 + 2] *= k
     }
-    if (!SOFT.test(name)) { shapes[name] = moving(d); continue }
-    const soft = new Float32Array(d.length)
-    for (let v = 0; v < count; v++) {
-      const w = cheekZone(anatomy.cheek, rest[v * 3 + 1], rest[v * 3 + 2], side)
-      for (let k = 0; k < 3; k++) soft[v * 3 + k] = d[v * 3 + k] * w
-    }
+    const swell = swelling[name]
+    if (swell) for (let i = 0; i < d.length; i++) d[i] += swell[i]
     shapes[name] = moving(d)
-    shapes[`${name}_soft`] = { delta: soft, jaw: new THREE.Matrix4() }
   }
-  shapes.cheekBulgeLeft = moving(cheekBulge(tissue, restNormals, rimFade, -1))
-  shapes.cheekBulgeRight = moving(cheekBulge(tissue, restNormals, rimFade, 1))
   for (const [name, delta] of Object.entries(lidShapes(tissue))) shapes[name] = { delta, jaw: new THREE.Matrix4() }
   return shapes
 }

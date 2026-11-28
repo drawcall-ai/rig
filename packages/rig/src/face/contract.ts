@@ -61,13 +61,10 @@ export interface FaceData {
   cheek: Anatomy['cheek']
   /**
    * Every morph target the face rig baked, on the `Face`, `Cavity`, `TeethLower` and `Tongue` meshes, each of which
-   * carries those that move it; other morph targets are not the face's. They carry ARKit blendshape names: the jaw,
-   * mouth, cheek, nose and brow shapes transferred from a reference head, the face's own `eyeBlink` and `eyeWide` lids
-   * and `tongueOut`. Beyond ARKit: `cheekBulgeLeft/Right`, the cheek mass swelling; `tongueUp`; and `<name>_soft`, the
-   * cheek part of the smile, stretch, upper-lip raise, sneer and dimple shapes. Weighted by a soft-tissue spring's lag
-   * behind the full shape's weight (lagging minus current, so negative while the shape rises), `_soft` lets the cheek
-   * trail the lips; plain ARKit drivers leave it at 0. Eye look directions are rotations of the eye bones (FACE_BONES),
-   * not shapes.
+   * carries those that move it; other morph targets are not the face's. They are the ARKit blendshapes but the eight
+   * `eyeLook*` ones, whose look directions are rotations of the eye bones (FACE_BONES): the jaw, mouth, cheek, nose,
+   * brow and `eyeSquint` shapes transferred from a reference head, the face's own `eyeBlink` and `eyeWide` lids, and
+   * `tongueOut`.
    */
   shapes: string[]
 }

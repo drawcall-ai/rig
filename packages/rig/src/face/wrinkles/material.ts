@@ -57,7 +57,7 @@ export function wrinkled(source: THREE.MeshStandardMaterial, face: FaceData, mes
   const crow = sided((s) => 0.9 * weight(`cheekSquint${s}`) + 0.5 * weight(`mouthSmile${s}`) + 0.4 * weight(`eyeSquint${s}`))
   const underEye = sided((s) => 0.8 * weight(`cheekSquint${s}`) + 0.4 * weight(`mouthSmile${s}`) + 0.3 * weight(`eyeSquint${s}`))
   const fold = sided((s) => 0.7 * weight(`mouthSmile${s}`) + 0.8 * weight(`noseSneer${s}`) + 0.3 * weight(`mouthUpperUp${s}`) + 0.3 * weight(`cheekSquint${s}`))
-  const cheekSwell = sided((s) => weight(`cheekBulge${s}`))
+  const cheekSwell = sided((s) => CHEEK_MASS.swell.mouthSmile * weight(`mouthSmile${s}`) + CHEEK_MASS.swell.cheekSquint * weight(`cheekSquint${s}`))
   const mentalis = single(() => weight('mouthShrugLower') + 0.2 * (weight('mouthFrownLeft') + weight('mouthFrownRight')) + 0.15 * (weight('mouthPressLeft') + weight('mouthPressRight')))
 
   const p = attribute(FACE_REST, 'vec3')

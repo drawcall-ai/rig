@@ -1,4 +1,4 @@
-/** Rigs a head for speech and expression from landmarks placed on its skin: the computation a face cache miss loads, kept under face/rig/ so a hit loads none of it. */
+/** Rigs a head with the ARKit blendshapes from landmarks placed on its skin: the computation a face cache miss loads, kept under face/rig/ so a hit loads none of it. */
 
 import * as THREE from 'three'
 import { FACE_BONES, FACE_REST, type FaceData, type FaceOptions } from '../contract.js'
@@ -9,7 +9,7 @@ import { cutEye, placeEye } from './eyes.js'
 import { similarity } from './fit.js'
 import { checkLandmarks, FITTED, templateLandmarks } from './landmarks.js'
 import { cutMouth } from './mouth.js'
-import { addTongueShapes, eyeball, mouthParts } from './parts.js'
+import { addTongueOut, eyeball, mouthParts } from './parts.js'
 import { faceShapes } from './shapes.js'
 import { normals, restTissue } from './tissue.js'
 import { Surface } from './surface.js'
@@ -83,7 +83,7 @@ export async function computeFace(object: THREE.Object3D, { landmarks, head }: F
   const jawShapes = Object.entries(shapes).flatMap(([name, shape]): [string, THREE.Matrix4][] => (shape.jaw.equals(IDENTITY) ? [] : [[name, templateToModel.clone().multiply(shape.jaw).multiply(modelToTemplate)]]))
   bakeRigid(parts.lowerTeeth, jawShapes)
   bakeRigid(parts.tongue, jawShapes)
-  addTongueShapes(parts.tongue, parts.tongueCenter.applyMatrix4(templateToModel), parts.tongueLength / scale, templateToModel)
+  addTongueOut(parts.tongue, parts.tongueCenter.applyMatrix4(templateToModel), parts.tongueLength / scale, templateToModel)
   for (const g of [parts.lowerTeeth, parts.tongue]) dropStill(g)
   const baked = [...new Set([moving, interior, parts.lowerTeeth, parts.tongue].flatMap((g) => (g.morphAttributes.position ?? []).map((target) => target.name)))]
   moving.userData.face = faceData(a, baked)

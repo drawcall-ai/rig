@@ -25,7 +25,7 @@ export async function cachedFace(object: Object3D, skeleton: readonly SkeletonBo
   const follow = skeleton.some((bone) => bone.pieces?.length) ? followPieces(object) : undefined
   const entry = new CacheEntry({
     // Bump when the key or the encoded format changes; the rigging code and its reference head are inputs.
-    version: 'rig-face@7',
+    version: 'rig-face@1',
     basePath: cachePath,
     dependencies: {
       model: { value: model },

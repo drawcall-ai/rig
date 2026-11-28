@@ -27,19 +27,12 @@ export function cheekMass(cheek: Anatomy['cheek'], y: number, z: number, side: n
   return smoothstep(1, 0.3, Math.hypot(dz, dy)) * smoothstep(crisp[0] + soften[0] * soft, crisp[1] + soften[1] * soft, sd)
 }
 
-/** The cheek region, wider than the mass, lateral of the nasolabial line: the soft tissue that lags behind the lips. */
-export function cheekZone(cheek: Anatomy['cheek'], y: number, z: number, side: number): number {
-  const az = z * side
-  if (az < CHEEK_MASS.edge.midline) return 0
-  const dz = (az - cheek.z) / (CHEEK_MASS.size.wide * 1.5), dy = (y - cheek.y) / ((y > cheek.y ? CHEEK_MASS.size.up : CHEEK_MASS.size.down) * 1.5)
-  return smoothstep(0, 0.5, 1 - Math.hypot(dz, dy)) * smoothstep(-0.00091, 0.00545, besideFold(cheek, y, az))
-}
-
 /**
- * The cheek mass swelling as a shape: skin slides along the surface toward the eye (wider than the mass, dragging its
- * surroundings), the mass thickens along the normal and its shoulders spread from the apex.
+ * The cheek mass swelling, which the smile and cheek squint carry (CHEEK_MASS.swell): skin slides along the surface
+ * toward the eye (wider than the mass, dragging its surroundings), the mass thickens along the normal and its shoulders
+ * spread from the apex.
  */
-export function cheekBulge(tissue: Tissue, normals: Float32Array, rimFade: Float32Array, side: number): Float32Array {
+export function cheekSwell(tissue: Tissue, normals: Float32Array, rimFade: Float32Array, side: number): Float32Array {
   const { rest, anatomy, mouth } = tissue
   const { cheek } = anatomy
   const { eyeY } = anatomy

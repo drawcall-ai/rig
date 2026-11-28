@@ -175,44 +175,28 @@ function merge(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
   return out
 }
 
-/** tongueUp: the tip up behind the upper teeth (l, t, d, n); tongueOut: the tip out between the teeth (th). */
-export function addTongueShapes(g: THREE.BufferGeometry, center: THREE.Vector3, length: number, templateToModel: THREE.Matrix4): void {
+/** Adds `tongueOut`: the tongue thrust forward, its tip out past the teeth and lips, narrowing as it extends. */
+export function addTongueOut(g: THREE.BufferGeometry, center: THREE.Vector3, length: number, templateToModel: THREE.Matrix4): void {
   const forward = new THREE.Vector3(1, 0, 0).transformDirection(templateToModel)
   const up = new THREE.Vector3(0, 1, 0).transformDirection(templateToModel)
   const k = length / 0.02
-  /** 0 at the back of the tongue to 1 at its tip. */
-  const tip = (p: THREE.Vector3) => Math.max(0, Math.min(1, (p.clone().sub(center).dot(forward) + 0.545 * length) / (1.545 * length)))
-  const shapes: Record<string, (p: THREE.Vector3) => THREE.Vector3> = {
-    tongueUp: (p) => {
-      const u = tip(p) ** 2
-      const side = p.clone().sub(center).projectOnPlane(forward).projectOnPlane(up)
-      return p.clone().addScaledVector(up, 0.02089 * k * u).addScaledVector(forward, -0.00145 * k * u).addScaledVector(side, -0.3 * u)
-    },
-    tongueOut: (p) => {
-      const u = tip(p)
-      const side = p.clone().sub(center).projectOnPlane(forward).projectOnPlane(up)
-      return p.clone().addScaledVector(forward, 0.01544 * k * u ** 1.5).addScaledVector(up, 0.00872 * k * u ** 1.2).addScaledVector(side, -0.2 * u)
-    },
-  }
   const p = g.getAttribute('position')
-  const positions = g.morphAttributes.position ?? [], deltas = g.morphAttributes.normal ?? []
-  for (const [name, move] of Object.entries(shapes)) {
-    const moved = g.clone()
-    moved.morphAttributes = {}
-    const mp = moved.getAttribute('position')
-    const v = new THREE.Vector3()
-    for (let i = 0; i < p.count; i++) {
-      const q = move(v.fromBufferAttribute(p, i))
-      mp.setXYZ(i, q.x, q.y, q.z)
-    }
-    moved.computeVertexNormals()
-    const d = new THREE.BufferAttribute(Float32Array.from(mp.array, (x, i) => x - p.array[i]), 3)
-    d.name = name
-    const nd = new THREE.BufferAttribute(Float32Array.from(moved.getAttribute('normal').array, (x, i) => x - g.getAttribute('normal').array[i]), 3)
-    nd.name = name
-    positions.push(d)
-    deltas.push(nd)
+  const moved = g.clone()
+  moved.morphAttributes = {}
+  const mp = moved.getAttribute('position')
+  const v = new THREE.Vector3()
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i)
+    // 0 at the back of the tongue to 1 at its tip
+    const u = Math.max(0, Math.min(1, (v.clone().sub(center).dot(forward) + 0.545 * length) / (1.545 * length)))
+    const side = v.clone().sub(center).projectOnPlane(forward).projectOnPlane(up)
+    v.addScaledVector(forward, 0.01544 * k * u ** 1.5).addScaledVector(up, 0.00872 * k * u ** 1.2).addScaledVector(side, -0.2 * u)
+    mp.setXYZ(i, v.x, v.y, v.z)
   }
-  g.morphAttributes.position = positions
-  g.morphAttributes.normal = deltas
+  moved.computeVertexNormals()
+  const delta = new THREE.BufferAttribute(Float32Array.from(mp.array, (x, i) => x - p.array[i]), 3)
+  const normalDelta = new THREE.BufferAttribute(Float32Array.from(moved.getAttribute('normal').array, (x, i) => x - g.getAttribute('normal').array[i]), 3)
+  delta.name = normalDelta.name = 'tongueOut'
+  g.morphAttributes.position = [...g.morphAttributes.position ?? [], delta]
+  g.morphAttributes.normal = [...g.morphAttributes.normal ?? [], normalDelta]
 }

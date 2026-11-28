@@ -71,8 +71,8 @@ new ResizeObserver(() => {
 }).observe(view)
 
 const poser = new Poser(rig.object, 'Neck')
-/** The ARKit shapes; the `_soft` lag corrections are for drivers with soft-tissue springs and stay at 0 here. */
-const shapes = new Set(poser.shapes.filter((n) => !n.endsWith('_soft')))
+/** The ARKit shapes the face carries. */
+const shapes = new Set(poser.shapes)
 /** ARKit weights by name: the shapes and the eyeLook weights the gaze pad writes. */
 const weights = new Map<string, number>()
 
