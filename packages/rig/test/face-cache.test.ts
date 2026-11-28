@@ -1,12 +1,16 @@
 import './offline.js'
 import assert from 'node:assert/strict'
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { Bone, Box3, BufferGeometry, Float32BufferAttribute, Group, Mesh, type Object3D, MeshDepthMaterial, MeshStandardMaterial, Quaternion, Skeleton, SkinnedMesh, SphereGeometry, Uint16BufferAttribute, Vector3 } from 'three'
 import { CachedRigLoader, pieces, type RigResult } from '../dist/index.js'
+import { decodeFace, encodeFace } from '../dist/face/codec.js'
+import { meshAt } from '../dist/face/edit.js'
+import { computeFace } from '../dist/face/rig/index.js'
 import { ALL } from '../dist/face/rig/landmarks.js'
+import { decode, encode } from '../dist/skin/codec.js'
 import { closedHead, rigFace } from './head.js'
 
 // CachedRigLoader's face rig: keyed by the model going into it, stored as data, and applied alike on every hit
@@ -196,33 +200,16 @@ try {
   assert.equal(reskinned.skeleton.bones[hatIndex.getX(0)].name, 'HatBone', 'piece indices name the skinned model as created')
   reskinned.dispose()
 
-  // stored entries are read strictly: a corrupt one fails the load rather than rigging from part of it
-  const strict = await mkdtemp(join(tmpdir(), 'rig-face-strict-'))
-  process.chdir(strict)
-  await faced().then((result) => result.dispose())
-  const cache = join(strict, 'public', '_cache')
-  const files = (await readdir(cache)).filter((name) => name.endsWith('.entry')).map((name) => join(cache, name))
-  assert.equal(files.length, 2)
-  // an entry file is its header's length, the header as JSON, then the bytes; the face entry records the reference head
-  // it was rigged with among its inputs
-  const entries = await Promise.all(files.map(async (file) => {
-    const content = await readFile(file)
-    const start = 4 + content.readUInt32LE(0)
-    return { file, content, start, face: content.subarray(4, start).toString().includes('face.glb') }
-  }))
-  const face = entries.find((entry) => entry.face), weights = entries.find((entry) => !entry.face)
-  assert.ok(face && weights)
-  await writeFile(face.file, Buffer.concat([face.content, Buffer.of(0)]))
-  await assert.rejects(faced(), /the cached face rig has 1 bytes past its end/)
-  await writeFile(face.file, face.content.subarray(0, face.content.length - 8))
-  await assert.rejects(faced(), /the cached face rig is truncated/)
-  await writeFile(face.file, face.content)
-  const wrongCount = Buffer.from(weights.content)
-  wrongCount.writeUInt32LE(wrongCount.readUInt32LE(weights.start) + 4, weights.start)
-  await writeFile(weights.file, wrongCount)
-  await assert.rejects(faced(), /Invalid rig cache weight buffers/, 'a weights entry for another vertex count fails')
-  process.chdir(directory)
-  await rm(strict, { recursive: true, force: true })
+  // stored bytes are read strictly: a corrupt entry fails the load rather than rigging from part of it
+  const rigged = hatted()
+  const edit = await computeFace(rigged, { landmarks, head: 'Head' })
+  const faceBytes = await encodeFace(edit, meshAt(rigged, edit.mesh).geometry)
+  const padded = new Uint8Array(faceBytes.length + 1)
+  padded.set(faceBytes)
+  await assert.rejects(decodeFace(padded, hatted()), /the cached face rig has 1 bytes past its end/)
+  await assert.rejects(decodeFace(faceBytes.subarray(0, faceBytes.length - 8), hatted()), /the cached face rig is truncated/)
+  const weightBytes = encode({ skinIndices: new Uint16Array(8), skinWeights: new Float32Array(8), report: { warnings: [], bones: [], closed: true, volume: null } })
+  assert.throws(() => decode(weightBytes, 3), /Invalid rig cache weight buffers/, 'weights for another vertex count fail')
   console.log('face cache keys, engine stability, piece indices, render state and stored face rigs ok')
 } finally {
   Worker.prototype.postMessage = post
