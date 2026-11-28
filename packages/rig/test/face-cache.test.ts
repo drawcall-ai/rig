@@ -1,3 +1,4 @@
+import './offline.js'
 import assert from 'node:assert/strict'
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -200,20 +201,25 @@ try {
   process.chdir(strict)
   await faced().then((result) => result.dispose())
   const cache = join(strict, 'public', '_cache')
-  const keys = (await readdir(cache)).filter((name) => name.endsWith('.json')).map((name) => name.slice(0, -5))
-  // the face entry records the reference head it was rigged with among its inputs
-  const isFace = await Promise.all(keys.map(async (key) => (await readFile(join(cache, `${key}.json`), 'utf8')).includes('face.glb')))
-  const faceBin = join(cache, `${keys[isFace.indexOf(true)]}.bin`), weightsBin = join(cache, `${keys[isFace.indexOf(false)]}.bin`)
-  assert.equal(keys.length, 2)
-  const [faceBytes, weightsBytes] = await Promise.all([readFile(faceBin), readFile(weightsBin)])
-  await writeFile(faceBin, Buffer.concat([faceBytes, Buffer.of(0)]))
+  const files = (await readdir(cache)).filter((name) => name.endsWith('.entry')).map((name) => join(cache, name))
+  assert.equal(files.length, 2)
+  // an entry file is its header's length, the header as JSON, then the bytes; the face entry records the reference head
+  // it was rigged with among its inputs
+  const entries = await Promise.all(files.map(async (file) => {
+    const content = await readFile(file)
+    const start = 4 + content.readUInt32LE(0)
+    return { file, content, start, face: content.subarray(4, start).toString().includes('face.glb') }
+  }))
+  const face = entries.find((entry) => entry.face), weights = entries.find((entry) => !entry.face)
+  assert.ok(face && weights)
+  await writeFile(face.file, Buffer.concat([face.content, Buffer.of(0)]))
   await assert.rejects(faced(), /the cached face rig has 1 bytes past its end/)
-  await writeFile(faceBin, faceBytes.subarray(0, faceBytes.length - 8))
+  await writeFile(face.file, face.content.subarray(0, face.content.length - 8))
   await assert.rejects(faced(), /the cached face rig is truncated/)
-  await writeFile(faceBin, faceBytes)
-  const wrongCount = Buffer.from(weightsBytes)
-  wrongCount.writeUInt32LE(wrongCount.readUInt32LE(0) + 4, 0)
-  await writeFile(weightsBin, wrongCount)
+  await writeFile(face.file, face.content)
+  const wrongCount = Buffer.from(weights.content)
+  wrongCount.writeUInt32LE(wrongCount.readUInt32LE(weights.start) + 4, weights.start)
+  await writeFile(weights.file, wrongCount)
   await assert.rejects(faced(), /Invalid rig cache weight buffers/, 'a weights entry for another vertex count fails')
   process.chdir(directory)
   await rm(strict, { recursive: true, force: true })

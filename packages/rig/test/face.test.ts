@@ -1,3 +1,4 @@
+import './offline.js'
 import assert from 'node:assert/strict'
 import * as THREE from 'three'
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'
