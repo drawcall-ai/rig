@@ -36,7 +36,7 @@ export interface FaceLandmarks {
   glabella: Vec3
   /**
    * Where the forehead skin ends at the midline: below any fringe hanging in front of it, or for a bald head where the
-   * forehead turns into the scalp. Nothing above it moves.
+   * forehead turns into the scalp. The brows ease into the scalp just past it; nothing else above it moves.
    */
   hairline: Vec3
 }
