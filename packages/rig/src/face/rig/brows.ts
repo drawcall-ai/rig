@@ -1,7 +1,7 @@
 /**
  * Brow controls: the brow skin around each inner and outer brow landmark moves as a unit, fading harmonically to the
- * still forehead, hairline, eye rims and cheeks. They move the brow itself, which the template's subtle brow shapes
- * barely do.
+ * still scalp a little past the hairline, the eye rims and cheeks. They move the brow itself, which the template's
+ * subtle brow shapes barely do.
  */
 
 import * as THREE from 'three'
@@ -23,6 +23,8 @@ const MOVES: Record<string, Move[]> = {
 
 const CONTROLS: Control[] = ['browInnerLeft', 'browInnerRight', 'browOuterLeft', 'browOuterRight']
 const STILL: Landmark[] = ['cheekLeft', 'cheekRight']
+/** How far past the hairline the brows still move the skin: the frontalis carries it up and eases into the still scalp. */
+const SCALP = 0.0145
 
 /** Per brow shape, the deltas its controls make. */
 export function browShapes(tissue: Tissue): Record<string, Float32Array> {
@@ -36,10 +38,11 @@ export function browShapes(tissue: Tissue): Record<string, Float32Array> {
   const seeds = new Map<Landmark, Set<number>>([...centers.keys()].map((name) => [name, new Set<number>()]))
   for (let v = 0; v < rest.length / 3; v++) {
     q.fromArray(rest, v * 3)
-    if (Math.abs(q.z) > 0.08175 || q.y < eyeY - 0.0639 || q.y > eyeY + 0.0542 || q.x < -0.0066) continue
+    const hairline = anatomy.hairline(q.z)
+    if (Math.abs(q.z) > 0.08175 || q.y < eyeY - 0.0639 || q.y > hairline + 2 * SCALP || q.x < -0.0066) continue
     const n = graph.node[v]
     active[n] = 1
-    if (q.y > anatomy.hairline(q.z) - 0.00091 || q.y < wingY - 0.006 || Math.abs(q.z) > 0.0654 || q.x < 0.0388 || v >= mouth.cavityStart) { far.add(n); continue }
+    if (q.y > hairline + SCALP || q.y < wingY - 0.006 || Math.abs(q.z) > 0.0654 || q.x < 0.0388 || v >= mouth.cavityStart) { far.add(n); continue }
     for (const [name, c] of centers) if (q.distanceTo(c) < (name.startsWith('cheek') ? 0.0109 : 0.00999)) seeds.get(name)?.add(n)
   }
   const fields = new Map(CONTROLS.map((control) => {
