@@ -1,0 +1,51 @@
+/** Jean Phil with a face rig: a skeleton for the head, neck and arms (the body stays still) and the face's landmarks. The model goes in examples/face/public/jean-phil.glb (the gallery's Jean Phil). */
+
+import { CachedRigLoader } from '@drawcall/rig'
+
+export const jeanPhil = () => new CachedRigLoader().loadAsync({
+  object: async (loader) => (await loader.loadAsync('jean-phil.glb')).scene,
+  skeleton: [
+    {"name": "Hips", "position": [-0.005, -0.04, 0]},
+    {"name": "Spine", "parent": "Hips", "position": [-0.005, 0.03, 0]},
+    {"name": "Spine1", "parent": "Spine", "position": [-0.01, 0.11, 0]},
+    {"name": "Spine2", "parent": "Spine1", "position": [-0.015, 0.19, 0]},
+    {"name": "Neck", "parent": "Spine2", "position": [-0.02, 0.3, 0]},
+    {"name": "Head", "parent": "Neck", "position": [-0.005, 0.36, 0]},
+    {"name": "HeadTop_End", "parent": "Head", "position": [0, 0.49, 0]},
+    {"name": "LeftShoulder", "parent": "Spine2", "position": [-0.02, 0.285, -0.03]},
+    {"name": "LeftArm", "parent": "LeftShoulder", "position": [-0.02, 0.262, -0.098]},
+    {"name": "LeftForeArm", "parent": "LeftArm", "position": [-0.012, 0.125, -0.172]},
+    {"name": "LeftHand", "parent": "LeftForeArm", "position": [0.008, 0.01, -0.235]},
+    {"name": "LeftHandMiddle4", "parent": "LeftHand", "position": [0.03, -0.084, -0.27]},
+    {"name": "RightShoulder", "parent": "Spine2", "position": [-0.02, 0.285, 0.03]},
+    {"name": "RightArm", "parent": "RightShoulder", "position": [-0.02, 0.262, 0.098]},
+    {"name": "RightForeArm", "parent": "RightArm", "position": [-0.012, 0.125, 0.172]},
+    {"name": "RightHand", "parent": "RightForeArm", "position": [0.008, 0.01, 0.235]},
+    {"name": "RightHandMiddle4", "parent": "RightHand", "position": [0.03, -0.084, 0.27]},
+  ],
+  resolution: 384,
+  face: {
+    head: 'Head',
+    landmarks: {
+      eyeInnerLeft: [0.04815, 0.4202, -0.0106], eyeInnerRight: [0.048, 0.4202, 0.0106],
+      eyeOuterLeft: [0.04319, 0.4206, -0.0244], eyeOuterRight: [0.04369, 0.4206, 0.0244],
+      lidUpperLeft: [0.04922, 0.4227, -0.0175], lidUpperRight: [0.04909, 0.4227, 0.0175],
+      lidLowerLeft: [0.04908, 0.4177, -0.0175], lidLowerRight: [0.04891, 0.4177, 0.0175],
+      browInnerLeft: [0.05415, 0.4265, -0.008], browInnerRight: [0.05463, 0.4265, 0.008],
+      browMidLeft: [0.05093, 0.428, -0.0175], browMidRight: [0.05103, 0.428, 0.0175],
+      browOuterLeft: [0.04034, 0.4262, -0.027], browOuterRight: [0.04129, 0.4262, 0.027],
+      noseWingLeft: [0.05812, 0.399, -0.0092], noseWingRight: [0.05875, 0.399, 0.0092],
+      cheekLeft: [0.04226, 0.4075, -0.026], cheekRight: [0.04246, 0.4075, 0.026],
+      jawLeft: [0.01405, 0.368, -0.026], jawRight: [0.01482, 0.368, 0.026],
+      mouthCornerLeft: [0.05478, 0.3825, -0.0135], mouthCornerRight: [0.05425, 0.3825, 0.0135],
+      mouthCenter: [0.05789, 0.3835, 0],
+      lowerLip: [0.05961, 0.3785, 0],
+      chin: [0.0563, 0.365, 0],
+      noseTip: [0.06717, 0.4025, 0],
+      subnasale: [0.06009, 0.3962, 0],
+      noseBridge: [0.0586, 0.416, 0],
+      glabella: [0.05591, 0.4255, 0],
+      hairline: [0.05511, 0.4335, 0],
+    },
+  },
+})

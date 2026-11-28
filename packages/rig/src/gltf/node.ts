@@ -1,7 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { createCanvas, loadImage } from '@napi-rs/canvas'
 import { DataTexture, LoaderUtils, type LoadingManager } from 'three'
 import { publicURL } from '@drawcall/cache'
 import type { GLTF, GLTFParser } from 'three/addons/loaders/GLTFLoader.js'
@@ -109,6 +108,7 @@ async function image(parser: GLTFParser, index: number, credentials: boolean): P
     data = dependency
   } else if (typeof source.uri === 'string') data = await readResource(parser, source.uri, credentials)
   else throw new Error(`ModelLoader: image ${index} has neither a uri nor a bufferView`)
+  const { createCanvas, loadImage } = await import('@napi-rs/canvas')
   const decoded = await loadImage(Buffer.from(data))
   const context = createCanvas(decoded.width, decoded.height).getContext('2d')
   context.drawImage(decoded, 0, 0)

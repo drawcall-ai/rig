@@ -46,10 +46,10 @@ jobs:
         uses: gittools/actions/gitversion/execute@v0
 
       - name: Build and test
-        run: pnpm --filter "./packages/*" test
+        run: pnpm test
 
       - name: Typecheck
-        run: pnpm --filter "./packages/*" typecheck
+        run: pnpm typecheck
 
       - name: Set package version
         working-directory: ./packages/rig

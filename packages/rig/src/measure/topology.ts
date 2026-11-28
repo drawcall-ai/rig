@@ -63,7 +63,7 @@ function connect(positions: Float32Array, indices: Uint32Array): Int32Array {
  * Positions match exactly, or, given a `step`, when they snap to the same point of a grid that fine
  * (two points closer than `step` can still straddle a grid line).
  */
-export function weld(positions: Float32Array, step = 0): Int32Array {
+export function weld(positions: ArrayLike<number>, step = 0): Int32Array {
   const count = positions.length / 3
   const first = new Int32Array(count)
   const byPosition = new Map<string, number>()

@@ -15,8 +15,13 @@ export interface SkeletonBone<Name extends string = string> {
   readonly name: Name
   /** Name of the parent bone; omit for a root. */
   readonly parent?: NoInfer<Name>
-  /** Absolute joint position, including children. CachedRigLoader interprets it in model coordinates. */
+  /**
+   * Absolute joint position, including children, in world space; for CachedRigLoader, the space the created object sits
+   * in, its own transform included.
+   */
   readonly position: Vec3
+  /** Rest orientation in the space of `position`, as a quaternion [x, y, z, w]; identity when omitted. */
+  readonly rotation?: readonly [number, number, number, number]
   /**
    * Rigid attachments: indices of separate mesh pieces (see pieces()) bound 100% to this bone,
    * e.g. glasses, a helmet, armor plates, a prop. A bone with pieces drives only them.
@@ -49,6 +54,9 @@ export function resolveSkeleton(bones: readonly SkeletonBone[]): ResolvedBone[] 
     if (indexOf.has(bone.name)) throw new Error(`duplicate bone name "${bone.name}"`)
     indexOf.set(bone.name, i)
     assertVec3(bone.position, `bone "${bone.name}".position`)
+    if (bone.rotation && (bone.rotation.length !== 4 || !bone.rotation.every(Number.isFinite) || Math.abs(Math.hypot(...bone.rotation) - 1) > 1e-6)) {
+      throw new Error(`bone "${bone.name}".rotation must be a unit quaternion [x, y, z, w], got ${JSON.stringify(bone.rotation)}`)
+    }
   }
 
   const parentIndices = bones.map((bone) => {

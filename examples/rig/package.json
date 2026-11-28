@@ -1,0 +1,20 @@
+{
+  "name": "rig-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/models.mjs && vite",
+    "build": "node scripts/models.mjs && vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@drawcall/rig": "workspace:*",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@drawcall/cache": "^0.9.1",
+    "@types/three": "^0.186.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.1"
+  }
+}

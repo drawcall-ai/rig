@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "pnpm --filter @drawcall/rig build",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "pnpm build && pnpm -r typecheck",
     "test": "pnpm --filter @drawcall/rig test"
   },
   "devDependencies": {

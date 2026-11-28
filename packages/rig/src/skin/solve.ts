@@ -3,8 +3,8 @@
  * orientation-penalized closest-bone assignment -> sparse top-4 weight blur
  * with early convergence exit -> per-vertex top-4 weights.
  *
- * Semantics mirror the vendored CPU reference (test/reference/, which mirrors
- * the original @drawcall/rigged library), with changes to keep memory flat:
+ * Semantics match the straightforward CPU reference in test/reference/, which
+ * parity.test.ts checks against, with these differences to keep memory flat:
  * - Per-bone distance fields fold into one running best-dist/best-bone pair
  *   right after each bone's BFS (same strict-< compare in the same bone
  *   order), so memory is flat in the bone count.

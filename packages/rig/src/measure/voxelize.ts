@@ -3,10 +3,10 @@
  * (SAT triangle/box test), then fill cells enclosed by surface in all six axis
  * directions. Grid order is x-major: index = x * dimY * dimZ + y * dimZ + z.
  *
- * Bit-identical to the original @drawcall/rigged voxelizer (vendored in
- * test/reference/voxel-volume.ts, checked by parity.test.ts), except that
- * faces lying exactly on the top bounding plane are kept (the original drops
- * them, which leaves flat-topped models open and unfilled).
+ * Bit-identical to the reference voxelizer in test/reference/voxel-volume.ts
+ * (checked by parity.test.ts), except that faces lying exactly on the top
+ * bounding plane are kept (the reference drops them, which leaves flat-topped
+ * models open and unfilled).
  */
 
 export interface VoxelVolume {
@@ -198,7 +198,7 @@ function computeSurfaceVoxelsFast(
 
 /**
  * Port of three r170 Box3.intersectsTriangle (SAT). Axis order and the strict `> r`
- * separating test match three exactly so results are bit-identical to the original.
+ * separating test match three exactly so results are bit-identical to the reference.
  */
 function triangleIntersectsBox(
   ax: number, ay: number, az: number,

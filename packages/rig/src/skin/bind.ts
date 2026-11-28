@@ -8,6 +8,7 @@ import { boneTree } from '../bone.js'
 import type { SkinReport } from './weights.js'
 import { computeWeights } from './worker.js'
 import { assertTRS } from './rest.js'
+import { copyRenderState } from '../render.js'
 
 /**
  * Binds every mesh under a container `object` (such as a Scene or Group) to a skeleton: either the bone
@@ -15,7 +16,9 @@ import { assertTRS } from './rest.js'
  * bone afterwards with `object.getObjectByName`). Either way the bound bones are those very objects:
  * computes skin weights from a snapshot in a worker and replaces each mesh
  * with a THREE.SkinnedMesh at the scene root (vertices baked into that root's coordinates, preserving
- * the current world-space bind pose) and removes any previous armature. Attaches an unparented `root` under `object`, preserving its world-space joints. Resolution =
+ * the current world-space bind pose) and removes any previous armature; anything else hanging off that armature or off a
+ * replaced mesh, such as an empty, a light or a socket, moves under `object` in place. Attaches an unparented `root` under
+ * `object`, preserving its world-space joints. Resolution =
  * voxels along the longest axis (default 128), as in section(). Returns per-bone results and warnings that
  * describe what the solver found. Attachments requiring shear fail before reparenting; bake nonuniform
  * scale into the model first. Geometry and bind transforms are captured before the worker starts;
@@ -49,7 +52,11 @@ export async function bind(
   const oldBones: THREE.Bone[] = []
   object.traverse((node) => node instanceof THREE.Bone && !newBones.has(node) && oldBones.push(node))
   const old = new Set<THREE.Object3D>(oldBones)
-  const attachments = oldBones.flatMap((bone) => bone.children.filter((child) => !old.has(child) && !(child instanceof THREE.Mesh)))
+  const meshes: THREE.Mesh[] = []
+  object.traverse((node) => node instanceof THREE.Mesh && meshes.push(node))
+  // what hangs off the old armature or off a mesh being replaced without being part of either, such as an empty, a
+  // light or a socket, stays in place under the root; meshes are skinned themselves
+  const attachments = [...oldBones, ...meshes].flatMap((parent) => parent.children.filter((child) => !old.has(child) && !(child instanceof THREE.Mesh)))
   const bindMatrix = object.matrixWorld.clone()
   const worldToModel = bindMatrix.clone().invert()
   // Validate every planned attachment before changing the source scene or replacing geometry.
@@ -77,6 +84,7 @@ export async function bind(
       const bound = new THREE.SkinnedMesh(geometry, mesh.material)
       bound.name = mesh.name
       bound.userData = { ...mesh.userData }
+      copyRenderState(bound, mesh)
       if (mesh.morphTargetInfluences) bound.morphTargetInfluences = [...mesh.morphTargetInfluences]
       if (mesh.morphTargetDictionary) bound.morphTargetDictionary = { ...mesh.morphTargetDictionary }
       return { mesh, bound, offset, count }
@@ -90,6 +98,8 @@ export async function bind(
       assertTRS(currentWorldToModel.clone().multiply(child.matrixWorld),
         `skin(): attaching "${child.name}" would require shear; bake nonuniform scale before skin`)
     }
+    // attached while their parents still hang in the tree, so their world transforms are current
+    for (const child of attachments) object.attach(child)
     const three = new THREE.Skeleton(bones, inverses)
     for (const { mesh, bound, offset, count } of prepared) {
       bound.geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices.slice(offset * 4, (offset + count) * 4), 4))
@@ -100,8 +110,6 @@ export async function bind(
       pending.delete(bound.geometry)
       bound.updateMatrixWorld(true)
     }
-    // What hangs off the old armature without being part of it stays, in place.
-    for (const child of attachments) object.attach(child)
     for (const bone of oldBones) bone.removeFromParent()
     const names = new Set(bones.map((bone) => bone.name))
     object.traverse((node) => {
@@ -137,21 +145,16 @@ function bakedGeometry(geometry: THREE.BufferGeometry, mesh: THREE.Mesh, worldTo
   geometry.deleteAttribute('skinIndex')
   geometry.deleteAttribute('skinWeight')
   const transform = new THREE.Matrix4().multiplyMatrices(worldToModel, mesh.matrixWorld)
-  const position = geometry.getAttribute('position')
-  const baked = new Float32Array(position.count * 3)
-  const v = new THREE.Vector3()
-  for (let i = 0; i < position.count; i++) {
-    v.fromArray(positions, i * 3).applyMatrix4(worldToModel).toArray(baked, i * 3)
-  }
-  geometry.setAttribute('position', new THREE.BufferAttribute(baked, 3))
-  const linear = new THREE.Matrix3().setFromMatrix4(transform)
-  const normalMatrix = new THREE.Matrix3().getNormalMatrix(transform)
-  const bake = (attribute: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, matrix: THREE.Matrix3, unit: boolean) => {
-    const out = new Float32Array(attribute.count * 3)
-    for (let i = 0; i < attribute.count; i++) {
-      v.fromBufferAttribute(attribute, i).applyMatrix3(matrix)
-      if (unit) v.normalize()
-      v.toArray(out, i * 3)
+  geometry.setAttribute('position', new THREE.BufferAttribute(transformed(positions, worldToModel.elements, true), 3))
+  const linear = transform.elements
+  const normalMatrix = new THREE.Matrix4().setFromMatrix3(new THREE.Matrix3().getNormalMatrix(transform)).elements
+  const bake = (attribute: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, matrix: number[], unit: boolean) => {
+    const values = new Float32Array(attribute.count * 3)
+    for (let i = 0; i < attribute.count; i++) for (let k = 0; k < 3; k++) values[i * 3 + k] = attribute.getComponent(i, k)
+    const out = transformed(values, matrix, false)
+    if (unit) for (let i = 0; i < out.length; i += 3) {
+      const length = Math.sqrt(out[i] * out[i] + out[i + 1] * out[i + 1] + out[i + 2] * out[i + 2]) || 1
+      out[i] /= length; out[i + 1] /= length; out[i + 2] /= length
     }
     return new THREE.BufferAttribute(out, 3)
   }
@@ -168,4 +171,17 @@ function bakedGeometry(geometry: THREE.BufferGeometry, mesh: THREE.Mesh, worldTo
   }
   geometry.computeBoundingBox()
   geometry.computeBoundingSphere()
+}
+
+/** `values` (xyz triples) times the column-major 4×4 `m`, with its translation when `points`. */
+function transformed(values: ArrayLike<number>, m: number[], points: boolean): Float32Array {
+  const out = new Float32Array(values.length)
+  const w = points ? 1 : 0
+  for (let i = 0; i < values.length; i += 3) {
+    const x = values[i], y = values[i + 1], z = values[i + 2]
+    out[i] = m[0] * x + m[4] * y + m[8] * z + m[12] * w
+    out[i + 1] = m[1] * x + m[5] * y + m[9] * z + m[13] * w
+    out[i + 2] = m[2] * x + m[6] * y + m[10] * z + m[14] * w
+  }
+  return out
 }

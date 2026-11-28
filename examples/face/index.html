@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Face</title>
+    <style>
+      :root { --bg: #1d1f21; --panel: #24272b; --line: #33373c; --text: #dde1e6; --muted: #8d96a0; --accent: #ffd23f; }
+      * { box-sizing: border-box; }
+      body { margin: 0; height: 100vh; height: 100dvh; display: flex; background: var(--bg); color: var(--text); font: 13px system-ui, sans-serif; overflow: hidden; }
+      #view { flex: 1; min-width: 0; position: relative; }
+      #view canvas { display: block; }
+      #status { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); pointer-events: none; }
+      #hint { position: absolute; left: 12px; bottom: 10px; color: var(--text); text-shadow: 0 1px 3px #000; font-size: 12px; pointer-events: none; }
+      aside { width: 340px; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); }
+      @media (max-width: 720px) {
+        body { flex-direction: column; }
+        aside { width: auto; height: 45vh; border-left: 0; border-top: 1px solid var(--line); }
+      }
+      .bar { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+      .bar input[type='search'] { flex: 1; min-width: 0; }
+      #controls { flex: 1; overflow-y: auto; }
+      button, input[type='search'], input[type='number'] { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+      button { padding: 5px 10px; cursor: pointer; }
+      button:hover { border-color: var(--muted); }
+      button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+      input[type='search'] { padding: 6px 8px; }
+      .chip { border-radius: 999px; }
+      label.toggle { display: flex; gap: 6px; align-items: center; color: var(--muted); cursor: pointer; }
+      details { border-bottom: 1px solid var(--line); }
+      summary { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; font-weight: 600; user-select: none; }
+      summary::marker { content: ''; }
+      summary::before { content: '▸'; color: var(--muted); transition: transform 0.15s; }
+      details[open] > summary::before { transform: rotate(90deg); }
+      summary .count { color: var(--bg); background: var(--accent); border-radius: 999px; padding: 0 7px; font-size: 11px; }
+      summary .count:empty { display: none; }
+      summary button { margin-left: auto; padding: 1px 8px; font-size: 11px; font-weight: 400; }
+      .rows { padding: 0 12px 8px; }
+      .row { display: grid; grid-template-columns: 92px 1fr 54px; gap: 8px; align-items: center; padding: 3px 0; }
+      .row > span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .row.active > span { color: var(--text); }
+      .row.side > span { padding-left: 14px; }
+      input[type='range'] { width: 100%; accent-color: var(--accent); }
+      input[type='number'] { width: 100%; padding: 2px 4px; text-align: right; }
+      #gaze { position: relative; width: 132px; height: 132px; margin: 4px auto 8px; border: 1px solid var(--line); border-radius: 8px; background:
+        linear-gradient(var(--line), var(--line)) center / 1px 100% no-repeat, linear-gradient(var(--line), var(--line)) center / 100% 1px no-repeat, var(--bg); touch-action: none; cursor: crosshair; }
+      #gaze::after { content: ''; position: absolute; left: calc(var(--x) * 50% + 50%); top: calc(var(--y) * 50% + 50%); width: 14px; height: 14px; margin: -7px; border-radius: 50%; background: var(--accent); }
+      #toast { position: fixed; left: 50%; bottom: 20px; translate: -50%; background: var(--accent); color: var(--bg); padding: 6px 12px; border-radius: 6px; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+      #toast.show { opacity: 1; }
+      /* at 16px, iOS does not zoom into a focused field; after the inputs' own font so it wins */
+      @media (max-width: 720px) { #search, input[type='number'] { font-size: 16px; } }
+    </style>
+  </head>
+  <body>
+    <div id="view"><div id="status">Loading…</div><div id="hint">Drag to orbit · pinch or scroll to zoom · double-tap or double-click a control to reset it</div></div>
+    <aside>
+      <div class="bar" id="presets"></div>
+      <div class="bar">
+        <input type="search" id="search" placeholder="Filter controls" aria-label="Filter controls" />
+        <label class="toggle" title="Move left and right sides together"><input type="checkbox" id="mirror" checked /> Mirror L/R</label>
+      </div>
+      <div class="bar"><button id="reset">Reset all</button><button id="copy" title="Copy the current pose as JSON">Copy pose</button></div>
+      <div id="controls"></div>
+    </aside>
+    <div id="toast" role="status"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
