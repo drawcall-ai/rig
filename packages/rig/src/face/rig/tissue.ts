@@ -3,6 +3,7 @@
 import * as THREE from 'three'
 import type { Anatomy } from './anatomy.js'
 import { surfaceGraph, type SurfaceGraph } from './graph.js'
+import { smoothstep } from './math.js'
 import type { Mouth } from './mouth.js'
 import type { Surface } from './surface.js'
 
@@ -19,9 +20,15 @@ export interface Tissue {
   rims: number[][]
   /** How rigidly the jaw carries each vertex: 1 on the jaw core below the mouth, graded across the lip line in the cavity, else 0. */
   jaw: Float32Array
-  /** Hair or the back and sides of the head: never moves. */
-  hair: (p: THREE.Vector3) => boolean
+  /**
+   * How much the skin at a point may move: 1 on the face, easing to 0 at the hair and the back and sides of the head,
+   * which stay still, so the moving face meets them without a crease.
+   */
+  mobility: (p: THREE.Vector3) => number
 }
+
+/** How far the skin eases to still before the hair and the back and sides of the head. */
+const EASE = 0.0073
 
 export function restTissue(s: Surface, anatomy: Anatomy, mouth: Mouth, rims: number[][]): Tissue {
   const rest = Float32Array.from(s.positions)
@@ -42,7 +49,12 @@ export function restTissue(s: Surface, anatomy: Anatomy, mouth: Mouth, rims: num
   }
   return {
     rest, triangles: Uint32Array.from(s.triangles), topo, graph: surfaceGraph(geometry, topo), anatomy, mouth, rims, jaw,
-    hair: (q) => q.y > anatomy.hairline(q.z) - 0.00091 || (Math.abs(q.z) > 0.0618 && q.y > 1.6053) || q.x < -0.0066,
+    mobility: (q) => {
+      const hairline = anatomy.hairline(q.z) - 0.00091
+      const below = 1 - smoothstep(hairline - EASE, hairline, q.y)
+      const front = 1 - smoothstep(0.0618 - EASE, 0.0618, Math.abs(q.z)) * smoothstep(1.6053 - EASE, 1.6053, q.y)
+      return below * front * smoothstep(-0.0066, -0.0066 + EASE, q.x)
+    },
   }
 }
 

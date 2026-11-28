@@ -48,7 +48,8 @@ export function transfer(t: Template, tissue: Tissue): Record<string, Float32Arr
   const neck = anatomy.mouth.center.y - 0.0977
   for (let v = 0; v < tissue.mouth.cavityStart; v++) {
     q.fromArray(rest, v * 3)
-    if (tissue.hair(q) || q.y < neck) continue
+    const mobility = tissue.mobility(q)
+    if (!mobility || q.y < neck) continue
     // near the lips, an upper-lip vertex only matches the template's upper lip, and lower the lower
     const sv = side[graph.node[v]] - 0.5
     const strict = Math.abs(sv) > 0.2
@@ -70,7 +71,7 @@ export function transfer(t: Template, tissue: Tissue): Record<string, Float32Arr
     const source = new THREE.Vector3()
     corners.forEach((corner, k) => source.addScaledVector(a.fromArray(tp, corner * 3), bestBary[k]))
     const jacobian = warp.jacobian(source)
-    const fade = 1 - Math.min(1, Math.max(0, (bestDistance - FADE) / FADE_WIDTH))
+    const fade = mobility * (1 - Math.min(1, Math.max(0, (bestDistance - FADE) / FADE_WIDTH)))
     for (const name of names) {
       const delta = t.targets[name]
       d.set(0, 0, 0)
@@ -78,7 +79,6 @@ export function transfer(t: Template, tissue: Tissue): Record<string, Float32Arr
       d.applyMatrix3(jacobian).multiplyScalar(fade).toArray(shapes[name], v * 3)
     }
   }
-  smoothAtHairline(shapes, tissue)
   for (const delta of Object.values(shapes)) fillCavity(delta, tissue)
   return shapes
 }
@@ -114,43 +114,6 @@ function lipSide({ rest, graph, mouth, anatomy }: Tissue): Float32Array {
   // outside the mouth region no side applies
   for (let n = 0; n < side.length; n++) if (!active[n] && !fixed.has(n)) side[n] = 0.5
   return side
-}
-
-/** Relaxes the shapes on a band of skin below the hairline, so the moving face meets the still hair without a crease. */
-function smoothAtHairline(shapes: Record<string, Float32Array>, { rest, graph, mouth, hair }: Tissue): void {
-  const { node, adj } = graph
-  const vertices: number[][] = Array.from({ length: adj.length }, () => [])
-  for (let v = 0; v < mouth.cavityStart; v++) vertices[node[v]].push(v)
-  const isHair = new Uint8Array(adj.length)
-  const q = new THREE.Vector3()
-  for (let n = 0; n < adj.length; n++) {
-    const v = vertices[n][0]
-    if (v !== undefined && hair(q.fromArray(rest, v * 3))) isHair[n] = 1
-  }
-  let ring = new Set<number>([...isHair.keys()].filter((n) => isHair[n]))
-  const band = new Set<number>()
-  for (let r = 0; r < 4; r++) {
-    const next = new Set<number>()
-    for (const n of ring) for (const m of adj[n]) if (!isHair[m] && !band.has(m)) { band.add(m); next.add(m) }
-    ring = next
-  }
-  for (const delta of Object.values(shapes)) {
-    const value = new Float32Array(adj.length * 3)
-    for (let n = 0; n < adj.length; n++) {
-      const v = vertices[n][0]
-      if (v !== undefined) value.set(delta.subarray(v * 3, v * 3 + 3), n * 3)
-    }
-    for (let it = 0; it < 6; it++) for (const n of band) {
-      let x = 0, y = 0, z = 0
-      for (const m of adj[n]) { x += value[m * 3]; y += value[m * 3 + 1]; z += value[m * 3 + 2] }
-      const k = adj[n].length
-      if (!k) continue
-      value[n * 3] = (value[n * 3] + x / k) / 2
-      value[n * 3 + 1] = (value[n * 3 + 1] + y / k) / 2
-      value[n * 3 + 2] = (value[n * 3 + 2] + z / k) / 2
-    }
-    for (const n of band) for (const v of vertices[n]) delta.set(value.subarray(n * 3, n * 3 + 3), v * 3)
-  }
 }
 
 /** The mouth cavity: harmonic from the slit (transferred) to the jaw's rigid motion deep inside (still skull above). */
